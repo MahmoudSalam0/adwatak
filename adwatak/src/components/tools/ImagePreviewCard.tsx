@@ -3,7 +3,6 @@
 import { memo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { X, ChevronUp, ChevronDown, FileImage } from "lucide-react";
-import Image from "next/image";
 
 interface ImagePreviewCardProps {
   file: File;
@@ -33,7 +32,7 @@ function ImagePreviewCard({
   const handleMoveUp = useCallback(() => onMoveUp(index), [index, onMoveUp]);
   const handleMoveDown = useCallback(
     () => onMoveDown(index),
-    [index, onMoveDown]
+    [index, onMoveDown],
   );
 
   return (
@@ -47,12 +46,10 @@ function ImagePreviewCard({
     >
        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-surface-200">
          {preview ? (
-           <Image
+           <img
              src={preview}
              alt={file.name}
-             fill
-             unoptimized
-             className="object-cover"
+             className="h-full w-full object-cover"
            />
          ) : (
            <div className="flex h-full w-full items-center justify-center">
