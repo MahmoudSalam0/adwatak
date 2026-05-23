@@ -5,28 +5,44 @@ interface ImageInput {
   preview: string;
 }
 
-function getImageDataUrl(file: File): Promise<{ dataUrl: string; width: number; height: number }> {
+function getImageDataUrl(file: File, signal?: AbortSignal): Promise<{ dataUrl: string; width: number; height: number }> {
   return new Promise((resolve, reject) => {
+    // If signal is already aborted, reject immediately
+    if (signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+
     const img = new Image();
     const url = URL.createObjectURL(file);
 
+    const abortHandler = () => {
+      URL.revokeObjectURL(url);
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+
+    signal?.addEventListener('abort', abortHandler);
+
     img.onload = () => {
+      // Clean up
+      signal?.removeEventListener('abort', abortHandler);
+      URL.revokeObjectURL(url);
       const canvas = document.createElement("canvas");
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
-        URL.revokeObjectURL(url);
         reject(new Error("فشل إنشاء Canvas"));
         return;
       }
       ctx.drawImage(img, 0, 0);
       const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
-      URL.revokeObjectURL(url);
       resolve({ dataUrl, width: img.naturalWidth, height: img.naturalHeight });
     };
 
     img.onerror = () => {
+      // Clean up
+      signal?.removeEventListener('abort', abortHandler);
       URL.revokeObjectURL(url);
       reject(new Error(`فشل تحميل الصورة: ${file.name}`));
     };
@@ -35,7 +51,7 @@ function getImageDataUrl(file: File): Promise<{ dataUrl: string; width: number; 
   });
 }
 
-export async function convertToPdf(images: ImageInput[]): Promise<Blob> {
+export async function convertToPdf(images: ImageInput[], signal?: AbortSignal): Promise<Blob> {
   if (images.length === 0) {
     throw new Error("لا توجد صور للتحويل");
   }
@@ -54,7 +70,12 @@ export async function convertToPdf(images: ImageInput[]): Promise<Blob> {
   const maxHeight = pageHeight - margin * 2;
 
   for (let i = 0; i < images.length; i++) {
-    const { dataUrl, width, height } = await getImageDataUrl(images[i].file);
+    // Check if signal is aborted before processing each image
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
+    const { dataUrl, width, height } = await getImageDataUrl(images[i].file, signal);
 
     let imgWidth = width;
     let imgHeight = height;

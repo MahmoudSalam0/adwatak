@@ -114,13 +114,13 @@ export default function JpgToPdfClient() {
             >
               {/* Stats bar */}
               <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/[0.06] bg-white/[0.03] px-5 py-3">
-                <div className="flex items-center gap-4 text-sm text-gray-400">
-                  <span className="flex items-center gap-1.5">
-                    <FileText className="h-4 w-4" />
-                    {images.length} صورة{images.length > 1 ? "" : ""}
-                  </span>
-                  <span>{sizeText}</span>
-                </div>
+                 <div className="flex items-center gap-4 text-sm text-gray-400">
+                   <span className="flex items-center gap-1.5">
+                     <FileText className="h-4 w-4" />
+                     {images.length} صورة
+                   </span>
+                   <span>{sizeText}</span>
+                 </div>
                 <button
                   onClick={handleReset}
                   className="flex items-center gap-1.5 text-sm text-red-400 hover:text-red-300 transition-colors"
@@ -154,22 +154,22 @@ export default function JpgToPdfClient() {
                   disabled={isProcessing}
                   className="flex-1"
                 >
-                  {status === "converting" ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      جاري التحويل...
-                    </>
-                  ) : status === "success" ? (
-                    <>
-                      <Download className="h-5 w-5" />
-                      تم التحميل
-                    </>
-                  ) : (
-                    <>
-                      <FileText className="h-5 w-5" />
-                      تحويل إلى PDF
-                    </>
-                  )}
+                   {status === "converting" ? (
+                     <>
+                       <Loader2 className="h-5 w-5 animate-spin" />
+                       جارٍ تحويل الصور إلى PDF...
+                     </>
+                   ) : status === "success" ? (
+                     <>
+                       <Download className="h-5 w-5" />
+                       تم إنشاء ملف PDF بنجاح
+                     </>
+                   ) : (
+                     <>
+                       <FileText className="h-5 w-5" />
+                       تحويل إلى PDF
+                     </>
+                   )}
                 </Button>
 
                 {status === "success" && (

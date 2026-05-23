@@ -3,6 +3,7 @@
 import { memo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { X, ChevronUp, ChevronDown, FileImage } from "lucide-react";
+import Image from "next/image";
 
 interface ImagePreviewCardProps {
   file: File;
@@ -44,20 +45,21 @@ function ImagePreviewCard({
       transition={{ duration: 0.25 }}
       className="group relative flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.06]"
     >
-      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-surface-200">
-        {preview ? (
-          <img
-            src={preview}
-            alt={file.name}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <FileImage className="h-6 w-6 text-gray-600" />
-          </div>
-        )}
-      </div>
+       <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-surface-200">
+         {preview ? (
+           <Image
+             src={preview}
+             alt={file.name}
+             fill
+             unoptimized
+             className="object-cover"
+           />
+         ) : (
+           <div className="flex h-full w-full items-center justify-center">
+             <FileImage className="h-6 w-6 text-gray-600" />
+           </div>
+         )}
+       </div>
 
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-white truncate">{file.name}</p>

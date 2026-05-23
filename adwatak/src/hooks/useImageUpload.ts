@@ -22,8 +22,9 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
   const revokeRef = useRef<string[]>([]);
 
   useEffect(() => {
+    const currentRevoke = revokeRef.current;
     return () => {
-      revokeRef.current.forEach((url) => URL.revokeObjectURL(url));
+      currentRevoke.forEach((url) => URL.revokeObjectURL(url));
     };
   }, []);
 
@@ -31,6 +32,16 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
     const url = URL.createObjectURL(file);
     revokeRef.current.push(url);
     return url;
+  }, []);
+
+  const revokePreviews = useCallback((previews: string[]) => {
+    previews.forEach((url) => {
+      const index = revokeRef.current.indexOf(url);
+      if (index !== -1) {
+        revokeRef.current.splice(index, 1);
+      }
+      URL.revokeObjectURL(url);
+    });
   }, []);
 
   const addImages = useCallback(
@@ -68,21 +79,21 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
 
       if (newErrors.length > 0) {
         setErrors((prev) => [...prev, ...newErrors]);
-        setTimeout(() => setErrors([]), 4000);
+        // Errors are cleared manually or when new files are added
       }
-    },
-    [images.length, maxFiles, maxSize, createPreview]
-  );
+     },
+     [images, maxFiles, maxSize, createPreview]
+   );
 
-  const removeImage = useCallback((index: number) => {
-    setImages((prev) => {
-      const removed = prev[index];
-      if (removed?.preview) {
-        URL.revokeObjectURL(removed.preview);
-      }
-      return prev.filter((_, i) => i !== index);
-    });
-  }, []);
+const removeImage = useCallback((index: number) => {
+  setImages((prev) => {
+    const removed = prev[index];
+    if (removed?.preview) {
+      revokePreviews([removed.preview]);
+    }
+    return prev.filter((_, i) => i !== index);
+  });
+}, [revokePreviews]);
 
   const moveImage = useCallback((fromIndex: number, toIndex: number) => {
     setImages((prev) => {
@@ -101,19 +112,20 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
     [moveImage]
   );
 
-  const moveDown = useCallback(
-    (index: number) => {
-      if (index >= images.length - 1) return;
-      moveImage(index, index + 1);
-    },
-    [moveImage, images.length]
-  );
+const moveDown = useCallback(
+  (index: number) => {
+    if (index >= images.length - 1) return;
+    moveImage(index, index + 1);
+  },
+  [moveImage, images]
+);
 
-  const clearAll = useCallback(() => {
-    images.forEach((img) => URL.revokeObjectURL(img.preview));
-    setImages([]);
-    setErrors([]);
-  }, [images]);
+const clearAll = useCallback(() => {
+  const previews = images.map((img) => img.preview);
+  revokePreviews(previews);
+  setImages([]);
+  setErrors([]);
+}, [images, revokePreviews]);
 
   const clearErrors = useCallback(() => setErrors([]), []);
 

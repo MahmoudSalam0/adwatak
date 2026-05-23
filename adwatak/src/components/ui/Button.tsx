@@ -1,17 +1,15 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import type { ReactNode } from "react";
+import type { ReactNode, ButtonHTMLAttributes } from "react";
 import { motion } from "framer-motion";
 
-interface ButtonProps {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
   variant?: "primary" | "secondary" | "ghost";
   size?: "sm" | "md" | "lg";
   href?: string;
-  onClick?: () => void;
   className?: string;
-  type?: "button" | "submit" | "reset";
 }
 
 export default function Button({
@@ -22,6 +20,7 @@ export default function Button({
   onClick,
   className,
   type = "button",
+  disabled = false,
 }: ButtonProps) {
   const base =
     "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary-500/50";
@@ -43,28 +42,29 @@ export default function Button({
 
   const classes = cn(base, sizes[size], variants[variant], className);
 
-  if (href) {
-    return (
-      <motion.a
-        href={href}
-        className={classes}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-      >
-        {children}
-      </motion.a>
-    );
-  }
+   if (href) {
+     return (
+       <motion.a
+         href={href}
+         className={classes}
+         whileHover={{ scale: 1.02 }}
+         whileTap={{ scale: 0.98 }}
+       >
+         {children}
+       </motion.a>
+     );
+   }
 
-  return (
-    <motion.button
-      type={type}
-      onClick={onClick}
-      className={classes}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-    >
-      {children}
-    </motion.button>
-  );
+   return (
+     <motion.button
+       type={type}
+       onClick={onClick}
+       disabled={disabled}
+       className={classes}
+       whileHover={{ scale: 1.02 }}
+       whileTap={{ scale: 0.98 }}
+     >
+       {children}
+     </motion.button>
+   );
 }
