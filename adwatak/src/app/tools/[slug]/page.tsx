@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getToolBySlug, tools } from "@/lib/tools";
 import ToolPlaceholder from "./ToolPlaceholder";
 
@@ -33,6 +33,11 @@ export default function ToolPage({ params }: Props) {
 
   if (!tool) {
     notFound();
+  }
+
+  // Force redirect for the ready tool to its correct static route
+  if (tool.slug === "jpg-to-pdf") {
+    redirect("/tools/jpg-to-pdf");
   }
 
   return <ToolPlaceholder tool={tool} />;
