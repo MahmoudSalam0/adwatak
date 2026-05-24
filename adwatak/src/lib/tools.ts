@@ -1,6 +1,10 @@
 import type { Tool } from "@/types";
 
-export const tools: Tool[] = [
+export interface ToolItem extends Tool {
+  isReady: boolean;
+}
+
+export const tools: ToolItem[] = [
   {
     slug: "pdf-merge",
     name: "دمج PDF",
@@ -8,6 +12,7 @@ export const tools: Tool[] = [
     icon: "FilePlus",
     color: "#7c3aed",
     gradient: "from-purple-500 to-violet-600",
+    isReady: false,
   },
   {
     slug: "jpg-to-pdf",
@@ -16,6 +21,7 @@ export const tools: Tool[] = [
     icon: "ImageUp",
     color: "#2563eb",
     gradient: "from-blue-500 to-indigo-600",
+    isReady: true,
   },
   {
     slug: "compress-pdf",
@@ -24,6 +30,7 @@ export const tools: Tool[] = [
     icon: "FileDown",
     color: "#0891b2",
     gradient: "from-cyan-500 to-teal-600",
+    isReady: false,
   },
   {
     slug: "compress-image",
@@ -32,6 +39,7 @@ export const tools: Tool[] = [
     icon: "ImageDown",
     color: "#059669",
     gradient: "from-emerald-500 to-green-600",
+    isReady: false,
   },
   {
     slug: "webp-to-jpg",
@@ -40,6 +48,7 @@ export const tools: Tool[] = [
     icon: "Repeat2",
     color: "#d97706",
     gradient: "from-amber-500 to-orange-600",
+    isReady: false,
   },
   {
     slug: "cv-builder",
@@ -48,9 +57,10 @@ export const tools: Tool[] = [
     icon: "FileText",
     color: "#dc2626",
     gradient: "from-red-500 to-rose-600",
+    isReady: false,
   },
 ];
 
-export function getToolBySlug(slug: string): Tool | undefined {
+export function getToolBySlug(slug: string): ToolItem | undefined {
   return tools.find((tool) => tool.slug === slug);
 }
