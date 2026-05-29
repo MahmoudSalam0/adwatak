@@ -39,9 +39,11 @@ export async function POST(_request: Request, { params }: Params) {
     return fail("نوع المهمة غير مدعوم حالياً", 400);
   }
 
+  const startedAt = new Date();
+
   await supabase
     .from("jobs")
-    .update({ status: "processing", progress: 5, started_at: new Date().toISOString(), error_message: null })
+    .update({ status: "processing", progress: 5, started_at: startedAt.toISOString(), error_message: null })
     .eq("id", job.id);
 
   try {
@@ -57,6 +59,7 @@ export async function POST(_request: Request, { params }: Params) {
     }
 
     const inputs: Array<{ bytes: Uint8Array; mime: string }> = [];
+    let inputTotalBytes = 0;
 
     for (let i = 0; i < files.length; i++) {
       const currentProgress = Math.min(70, 10 + Math.floor((i / files.length) * 60));
@@ -72,6 +75,7 @@ export async function POST(_request: Request, { params }: Params) {
       }
 
       const bytes = new Uint8Array(await blob.arrayBuffer());
+      inputTotalBytes += bytes.byteLength;
       inputs.push({ bytes, mime: file.mime ?? "image/jpeg" });
     }
 
@@ -109,6 +113,17 @@ export async function POST(_request: Request, { params }: Params) {
       .update({ status: "completed", progress: 100, finished_at: new Date().toISOString() })
       .eq("id", job.id);
 
+    const durationMs = Date.now() - startedAt.getTime();
+    await supabase.from("usage_logs").insert({
+      user_id: user.id,
+      tool_type: "jpg_to_pdf",
+      job_id: job.id,
+      duration_ms: durationMs,
+      input_total_bytes: inputTotalBytes,
+      output_total_bytes: outputBytes.byteLength,
+      status: "completed",
+    });
+
     return ok({ status: "completed" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "حدث خطأ أثناء المعالجة";
@@ -122,6 +137,15 @@ export async function POST(_request: Request, { params }: Params) {
         finished_at: new Date().toISOString(),
       })
       .eq("id", job.id);
+
+    const durationMs = Date.now() - startedAt.getTime();
+    await supabase.from("usage_logs").insert({
+      user_id: user.id,
+      tool_type: "jpg_to_pdf",
+      job_id: job.id,
+      duration_ms: durationMs,
+      status: "failed",
+    });
 
     return fail(message, 500);
   }

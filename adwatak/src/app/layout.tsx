@@ -4,6 +4,7 @@ import "@/app/globals.css";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import BackgroundEffects from "@/components/background/BackgroundEffects";
+import { getCurrentUser } from "@/lib/auth";
 
 const tajawal = Tajawal({
   subsets: ["arabic"],
@@ -51,11 +52,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const user = await getCurrentUser();
+
   return (
     <html
       lang="ar"
@@ -65,7 +68,7 @@ export default function RootLayout({
     >
       <body className="min-h-screen bg-surface font-tajawal text-gray-100 antialiased">
         <BackgroundEffects />
-        <Navbar />
+        <Navbar initialEmail={user?.email ?? null} />
         <main className="relative">{children}</main>
         <Footer />
       </body>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import Container from "@/components/ui/Container";
@@ -8,10 +8,24 @@ import Button from "@/components/ui/Button";
 import Logo from "./Logo";
 import { NAV_LINKS } from "@/lib/constants";
 import { useScrollPosition } from "@/hooks/useScrollPosition";
+import { createClient } from "@/lib/supabase/client";
 
-export default function Navbar() {
+interface NavbarProps {
+  initialEmail: string | null;
+}
+
+export default function Navbar({ initialEmail }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [email, setEmail] = useState(initialEmail);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const scrolled = useScrollPosition();
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setEmail(data.user?.email ?? null);
+    });
+  }, []);
 
   const handleNavClick = (
     e: React.MouseEvent<HTMLAnchorElement>,
@@ -53,10 +67,37 @@ export default function Navbar() {
             ))}
           </ul>
 
-          <div className="hidden md:block">
+          <div className="hidden md:flex items-center gap-2">
             <Button href="#tools" size="sm">
               ابدأ الآن
             </Button>
+            {!email ? (
+              <Button href="/auth/login" variant="secondary" size="sm">
+                تسجيل الدخول
+              </Button>
+            ) : (
+              <>
+                <span className="max-w-[180px] truncate text-xs text-gray-300" dir="ltr">
+                  {email}
+                </span>
+                <Button href="/profile" variant="secondary" size="sm">
+                  الملف الشخصي
+                </Button>
+                <button
+                  type="button"
+                  disabled={isSigningOut}
+                  onClick={async () => {
+                    if (isSigningOut) return;
+                    setIsSigningOut(true);
+                    await fetch("/api/auth/signout", { method: "POST" });
+                    window.location.href = "/";
+                  }}
+                  className="rounded-xl px-4 py-2 text-sm text-red-300 hover:text-red-200 hover:bg-red-500/10 transition-colors disabled:opacity-60"
+                >
+                  تسجيل الخروج
+                </button>
+              </>
+            )}
           </div>
 
           <button
@@ -90,9 +131,28 @@ export default function Navbar() {
                     {link.label}
                   </a>
                 ))}
-                <Button href="#tools" className="mt-2">
-                  ابدأ الآن
-                </Button>
+                <Button href="#tools" className="mt-2">ابدأ الآن</Button>
+                {!email ? (
+                  <Button href="/auth/login" variant="secondary">تسجيل الدخول</Button>
+                ) : (
+                  <>
+                    <p className="text-xs text-gray-400" dir="ltr">{email}</p>
+                    <Button href="/profile" variant="secondary">الملف الشخصي</Button>
+                    <button
+                      type="button"
+                      disabled={isSigningOut}
+                      onClick={async () => {
+                        if (isSigningOut) return;
+                        setIsSigningOut(true);
+                        await fetch("/api/auth/signout", { method: "POST" });
+                        window.location.href = "/";
+                      }}
+                      className="text-right rounded-xl px-4 py-3 text-sm text-red-300 hover:bg-red-500/10"
+                    >
+                      تسجيل الخروج
+                    </button>
+                  </>
+                )}
               </div>
             </Container>
           </motion.div>
