@@ -10,6 +10,18 @@ import Button from "@/components/ui/Button";
 import FadeIn from "@/components/animations/FadeIn";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { convertToPdf, downloadPdf } from "@/lib/pdfUtils";
+import { uploadWithProgress } from "@/lib/jobs/upload";
+
+type ServerJobStatus = "queued" | "processing" | "completed" | "failed";
+
+const USE_SERVER_FLOW = process.env.NEXT_PUBLIC_USE_SERVER_JPG_TO_PDF === "true";
+
+function statusToArabic(status: ServerJobStatus): string {
+  if (status === "queued") return "في الانتظار";
+  if (status === "processing") return "جاري المعالجة";
+  if (status === "completed") return "جاهز للتحميل";
+  return "فشلت العملية";
+}
 
 export default function JpgToPdfClient() {
   const {
@@ -27,8 +39,147 @@ export default function JpgToPdfClient() {
 
   const [status, setStatus] = useState<"idle" | "converting" | "success" | "error">("idle");
   const [statusMessage, setStatusMessage] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [jobProgress, setJobProgress] = useState(0);
+  const [jobStatus, setJobStatus] = useState<ServerJobStatus | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isBusy = isProcessing || isSubmitting;
+
+  const pollJobStatus = useCallback(async (id: string) => {
+    while (true) {
+      const response = await fetch(`/api/jobs/${id}`, { cache: "no-store" });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? "تعذر متابعة حالة المهمة");
+      }
+
+      const nextStatus = payload?.data?.job?.status as ServerJobStatus;
+      const nextProgress = payload?.data?.job?.progress as number;
+      const errorMessage = payload?.data?.job?.error_message as string | null;
+
+      setJobStatus(nextStatus);
+      setJobProgress(nextProgress ?? 0);
+
+      if (nextStatus === "completed") {
+        const downloadRes = await fetch(`/api/jobs/${id}/download`, { cache: "no-store" });
+        const downloadPayload = await downloadRes.json();
+        if (downloadRes.ok) {
+          setDownloadUrl(downloadPayload?.data?.url ?? null);
+        }
+        setStatus("success");
+        setStatusMessage("تم إنشاء ملف PDF بنجاح");
+        return;
+      }
+
+      if (nextStatus === "failed") {
+        setStatus("error");
+        setStatusMessage(errorMessage ?? "فشلت عملية التحويل");
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+    }
+  }, []);
+
+  const handleServerConvert = useCallback(async () => {
+    if (images.length === 0 || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setIsProcessing(true);
+    setStatus("converting");
+    setStatusMessage("جاري رفع الملفات...");
+    setUploadProgress(0);
+    setJobProgress(0);
+    setJobStatus(null);
+    setJobId(null);
+    setDownloadUrl(null);
+
+    try {
+      const uploadReq = await fetch("/api/storage/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          files: images.map((img) => ({
+            fileName: img.file.name,
+            contentType: img.file.type || "application/octet-stream",
+            sizeBytes: img.file.size,
+          })),
+        }),
+      });
+
+      const uploadPayload = await uploadReq.json();
+
+      if (!uploadReq.ok) {
+        throw new Error(uploadPayload?.error?.message ?? "تعذر إنشاء روابط الرفع");
+      }
+
+      const uploads = uploadPayload?.data?.uploads as Array<{ path: string; signedUploadUrl: string }>;
+      let uploadedBytes = 0;
+      const totalBytes = images.reduce((acc, img) => acc + img.file.size, 0);
+
+      for (let i = 0; i < uploads.length; i++) {
+        const file = images[i].file;
+        await uploadWithProgress(uploads[i].signedUploadUrl, file, (fileProgress) => {
+          const fileLoaded = Math.round((fileProgress / 100) * file.size);
+          const absolute = uploadedBytes + fileLoaded;
+          setUploadProgress(Math.min(100, Math.round((absolute / totalBytes) * 100)));
+        });
+        uploadedBytes += file.size;
+        setUploadProgress(Math.min(100, Math.round((uploadedBytes / totalBytes) * 100)));
+      }
+
+      setStatusMessage("جاري تجهيز المهمة...");
+
+      const createJobRes = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toolType: "jpg_to_pdf",
+          inputFiles: uploads.map((upload, index) => ({
+            path: upload.path,
+            mime: images[index].file.type || "image/jpeg",
+            sizeBytes: images[index].file.size,
+            orderIndex: index,
+          })),
+          options: {},
+        }),
+      });
+
+      const createPayload = await createJobRes.json();
+      if (!createJobRes.ok) {
+        throw new Error(createPayload?.error?.message ?? "تعذر إنشاء المهمة");
+      }
+
+      const id = createPayload?.data?.job?.id as string;
+      setJobId(id);
+      setJobStatus("queued");
+
+      const processRes = await fetch(`/api/jobs/${id}/process`, { method: "POST" });
+      if (!processRes.ok) {
+        const processPayload = await processRes.json();
+        throw new Error(processPayload?.error?.message ?? "تعذر بدء المعالجة");
+      }
+
+      await pollJobStatus(id);
+    } catch (err) {
+      setStatus("error");
+      setStatusMessage(err instanceof Error ? err.message : "حدث خطأ أثناء التحويل");
+    } finally {
+      setIsSubmitting(false);
+      setIsProcessing(false);
+    }
+  }, [images, isSubmitting, pollJobStatus, setIsProcessing]);
 
   const handleConvert = useCallback(async () => {
+    if (USE_SERVER_FLOW) {
+      await handleServerConvert();
+      return;
+    }
+
     if (images.length === 0) return;
 
     setStatus("converting");
@@ -46,12 +197,17 @@ export default function JpgToPdfClient() {
     } finally {
       setIsProcessing(false);
     }
-  }, [images, setIsProcessing]);
+  }, [handleServerConvert, images, setIsProcessing]);
 
   const handleReset = useCallback(() => {
     clearAll();
     setStatus("idle");
     setStatusMessage("");
+    setUploadProgress(0);
+    setJobProgress(0);
+    setJobStatus(null);
+    setJobId(null);
+    setDownloadUrl(null);
   }, [clearAll]);
 
   const totalSize = images.reduce((acc, img) => acc + img.file.size, 0);
@@ -112,6 +268,32 @@ export default function JpgToPdfClient() {
               exit={{ opacity: 0, y: 20 }}
               className="space-y-4"
             >
+              {USE_SERVER_FLOW && status === "converting" && (
+                <div className="rounded-xl border border-white/[0.08] bg-white/[0.04] p-4 space-y-3">
+                  <div className="flex items-center justify-between text-sm text-gray-300">
+                    <span>{uploadProgress < 100 ? "جاري رفع الملفات" : "جاري تجهيز المهمة"}</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                    <div className="h-full bg-blue-500 transition-all" style={{ width: `${uploadProgress}%` }} />
+                  </div>
+
+                  {jobStatus && (
+                    <>
+                      <div className="flex items-center justify-between text-sm text-gray-300">
+                        <span>الحالة: {statusToArabic(jobStatus)}</span>
+                        <span>{jobProgress}%</span>
+                      </div>
+                      <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                        <div className="h-full bg-emerald-500 transition-all" style={{ width: `${jobProgress}%` }} />
+                      </div>
+                    </>
+                  )}
+
+                  {jobId && <p className="text-xs text-gray-500">Job ID: {jobId}</p>}
+                </div>
+              )}
+
               {/* Stats bar */}
               <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/[0.06] bg-white/[0.03] px-5 py-3">
                  <div className="flex items-center gap-4 text-sm text-gray-400">
@@ -123,6 +305,7 @@ export default function JpgToPdfClient() {
                  </div>
                 <button
                   onClick={handleReset}
+                  disabled={isBusy}
                   className="flex items-center gap-1.5 text-sm text-red-400 hover:text-red-300 transition-colors"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -148,17 +331,17 @@ export default function JpgToPdfClient() {
 
               {/* Convert button */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-2">
-                <Button
+            <Button
                   onClick={handleConvert}
                   size="lg"
-                  disabled={isProcessing}
+                  disabled={isBusy}
                   className="flex-1"
                 >
                    {status === "converting" ? (
                      <>
                        <Loader2 className="h-5 w-5 animate-spin" />
-                       جارٍ تحويل الصور إلى PDF...
-                     </>
+                        {USE_SERVER_FLOW ? "جارٍ تنفيذ المهمة على السيرفر..." : "جارٍ تحويل الصور إلى PDF..."}
+                      </>
                    ) : status === "success" ? (
                      <>
                        <Download className="h-5 w-5" />
@@ -173,10 +356,18 @@ export default function JpgToPdfClient() {
                 </Button>
 
                 {status === "success" && (
-                  <Button onClick={handleReset} variant="secondary">
-                    <RotateCcw className="h-5 w-5" />
-                    تحويل مرة أخرى
-                  </Button>
+                  <>
+                    {USE_SERVER_FLOW && downloadUrl && (
+                      <Button href={downloadUrl}>
+                        <Download className="h-5 w-5" />
+                        تنزيل الملف
+                      </Button>
+                    )}
+                    <Button onClick={handleReset} variant="secondary">
+                      <RotateCcw className="h-5 w-5" />
+                      تحويل مرة أخرى
+                    </Button>
+                  </>
                 )}
               </div>
 
