@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { env } from "@/lib/env";
+import { serverEnv } from "@/lib/env/server";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -16,5 +16,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(new URL("/auth/auth-code-error", env.APP_URL));
+  return NextResponse.redirect(new URL("/auth/auth-code-error", serverEnv.APP_URL));
 }

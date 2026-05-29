@@ -1,6 +1,6 @@
 import { fail, ok } from "@/lib/api/responses";
 import { createClient } from "@/lib/supabase/server";
-import { env } from "@/lib/env";
+import { serverEnv } from "@/lib/env/server";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${env.APP_URL}/auth/callback`,
+      emailRedirectTo: `${serverEnv.APP_URL}/auth/callback`,
     },
   });
 
