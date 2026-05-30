@@ -9,7 +9,8 @@
     "lint": "next lint",
     "smoke:jpg-pdf": "node scripts/smoke-jpg-to-pdf.js",
     "smoke:pdf-merge": "node scripts/smoke-pdf-merge.js",
-    "smoke:image-compress": "node scripts/smoke-image-compress.js"
+    "smoke:image-compress": "node scripts/smoke-image-compress.js",
+    "smoke:pdf-compress": "node scripts/smoke-pdf-compress.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

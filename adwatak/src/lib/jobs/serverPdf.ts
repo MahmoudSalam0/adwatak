@@ -68,3 +68,16 @@ export async function mergePdfFiles(files: Uint8Array[]): Promise<Uint8Array> {
 
   return merged.save({ useObjectStreams: true, addDefaultPage: false, objectsPerTick: 50 });
 }
+
+export async function compressPdfBytes(input: Uint8Array): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(input, {
+    ignoreEncryption: false,
+    updateMetadata: false,
+  });
+
+  return doc.save({
+    useObjectStreams: true,
+    addDefaultPage: false,
+    objectsPerTick: 50,
+  });
+}

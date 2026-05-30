@@ -30,7 +30,7 @@ export const tools: ToolItem[] = [
     icon: "FileDown",
     color: "#0891b2",
     gradient: "from-cyan-500 to-teal-600",
-    isReady: false,
+    isReady: true,
   },
   {
     slug: "compress-image",

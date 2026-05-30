@@ -39,6 +39,7 @@ export default function ToolPage({ params }: Props) {
   if (tool.slug === "jpg-to-pdf") redirect("/tools/jpg-to-pdf");
   if (tool.slug === "pdf-merge") redirect("/tools/pdf-merge");
   if (tool.slug === "compress-image") redirect("/tools/compress-image");
+  if (tool.slug === "compress-pdf") redirect("/tools/compress-pdf");
 
   return <ToolPlaceholder tool={tool} />;
 }

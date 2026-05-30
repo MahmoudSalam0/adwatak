@@ -1,6 +1,6 @@
 import { fail, ok } from "@/lib/api/responses";
 import { STORAGE_BUCKETS } from "@/lib/jobs/constants";
-import { buildPdfFromImages, mergePdfFiles } from "@/lib/jobs/serverPdf";
+import { buildPdfFromImages, compressPdfBytes, mergePdfFiles } from "@/lib/jobs/serverPdf";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { ToolType } from "@/lib/supabase/types";
@@ -53,7 +53,12 @@ export async function POST(_request: Request, { params }: Params) {
     return ok({ status: "completed", message: "المهمة مكتملة بالفعل" });
   }
 
-  if (job.tool_type !== "jpg_to_pdf" && job.tool_type !== "pdf_merge" && job.tool_type !== "image_compress") {
+  if (
+    job.tool_type !== "jpg_to_pdf" &&
+    job.tool_type !== "pdf_merge" &&
+    job.tool_type !== "image_compress" &&
+    job.tool_type !== "pdf_compress"
+  ) {
     return fail("نوع المهمة غير مدعوم حالياً", 400);
   }
 
@@ -126,11 +131,11 @@ export async function POST(_request: Request, { params }: Params) {
         savingsBytes: inputTotalBytes - outputBytes.byteLength,
         savingsPercentage: inputTotalBytes > 0 ? ((inputTotalBytes - outputBytes.byteLength) / inputTotalBytes) * 100 : 0,
       };
-    } else {
+    } else if (job.tool_type === "image_compress") {
       const options = (job.options as Record<string, unknown> | null) ?? {};
       const qualityValue = typeof options.quality === "number" ? options.quality : 75;
       const quality = Math.max(60, Math.min(85, Math.round(qualityValue)));
-      const force = Boolean(options.force);
+      const force = false;
       const pngMode = normalizePngMode(options.pngMode);
       const zip = new JSZip();
       const fileReports: Array<Record<string, unknown>> = [];
@@ -199,13 +204,77 @@ export async function POST(_request: Request, { params }: Params) {
       mimeType = "application/zip";
       report = {
         quality,
-        force,
+        force: false,
         pngMode,
         originalSize: inputTotalBytes,
         outputSize: outputBytes.byteLength,
         compressedImagesSize: outputImagesTotal,
         skippedCount,
         processedCount: inputs.length,
+        savingsBytes: inputTotalBytes - outputBytes.byteLength,
+        savingsPercentage: inputTotalBytes > 0 ? ((inputTotalBytes - outputBytes.byteLength) / inputTotalBytes) * 100 : 0,
+        files: fileReports,
+      };
+    } else {
+      const zip = new JSZip();
+      const fileReports: Array<Record<string, unknown>> = [];
+      let improvedCount = 0;
+      let skippedCount = 0;
+      let improvedTotal = 0;
+
+      for (let i = 0; i < inputs.length; i++) {
+        const original = inputs[i].bytes;
+        const compressed = await compressPdfBytes(original);
+        const improved = compressed.byteLength < original.byteLength;
+        const fileName = `compressed-${i + 1}.pdf`;
+
+        if (improved) {
+          improvedCount += 1;
+          improvedTotal += compressed.byteLength;
+          zip.file(fileName, compressed);
+        } else {
+          skippedCount += 1;
+        }
+
+        fileReports.push({
+          index: i,
+          inputSize: original.byteLength,
+          outputSize: compressed.byteLength,
+          improved,
+          skipped: !improved,
+          savingsBytes: original.byteLength - compressed.byteLength,
+          savingsPercentage:
+            original.byteLength > 0
+              ? ((original.byteLength - compressed.byteLength) / original.byteLength) * 100
+              : 0,
+        });
+      }
+
+      if (improvedCount === 0) {
+        throw new Error("الملفات مضغوطة مسبقًا أو لا يمكن تقليلها بالجودة الحالية");
+      }
+
+      if (improvedCount === 1) {
+        const first = Object.values(zip.files)[0];
+        outputBytes = await first.async("uint8array");
+        outputPath = `${user.id}/${job.id}/output.pdf`;
+        mimeType = "application/pdf";
+      } else {
+        outputBytes = await zip.generateAsync({
+          type: "uint8array",
+          compression: "DEFLATE",
+          compressionOptions: { level: 9 },
+        });
+        outputPath = `${user.id}/${job.id}/output.zip`;
+        mimeType = "application/zip";
+      }
+
+      report = {
+        originalSize: inputTotalBytes,
+        outputSize: outputBytes.byteLength,
+        improvedContentSize: improvedTotal,
+        improvedCount,
+        skippedCount,
         savingsBytes: inputTotalBytes - outputBytes.byteLength,
         savingsPercentage: inputTotalBytes > 0 ? ((inputTotalBytes - outputBytes.byteLength) / inputTotalBytes) * 100 : 0,
         files: fileReports,
