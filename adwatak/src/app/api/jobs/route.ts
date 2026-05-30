@@ -87,6 +87,20 @@ export async function POST(request: Request) {
     .single();
 
   if (jobError || !job) {
+    console.error("[api/jobs][create] failed", {
+      userId: user.id,
+      toolType: parsed.data.toolType,
+      inputCount: parsed.data.inputFiles.length,
+      optionsKeys: Object.keys(parsed.data.options ?? {}),
+      error: jobError
+        ? {
+            message: jobError.message,
+            code: jobError.code,
+            details: jobError.details,
+            hint: jobError.hint,
+          }
+        : null,
+    });
     return fail("تعذر إنشاء المهمة", 500, jobError?.message);
   }
 
