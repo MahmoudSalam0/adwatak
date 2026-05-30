@@ -20,6 +20,11 @@ interface JobReport {
   skippedCount?: number;
 }
 
+interface JobOptionsPayload {
+  resultReport?: JobReport;
+  inputFileNames?: Array<string | null>;
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
@@ -46,6 +51,7 @@ export default function ImageCompressorClient() {
   const [quality, setQuality] = useState(75);
   const [pngMode, setPngMode] = useState<PngMode>("auto");
   const [report, setReport] = useState<JobReport | null>(null);
+  const [inputFileNames, setInputFileNames] = useState<string[]>([]);
 
   const addFiles = useCallback((selected: File[]) => {
     const invalid: string[] = [];
@@ -64,6 +70,7 @@ export default function ImageCompressorClient() {
     setFiles([]); setErrors([]); setStatus("idle"); setStatusMessage("");
     setUploadProgress(0); setJobProgress(0); setJobStatus(null); setJobId(null); setDownloadUrl(null);
     setReport(null);
+    setInputFileNames([]);
   }, []);
 
   const poll = useCallback(async (id: string) => {
@@ -74,9 +81,11 @@ export default function ImageCompressorClient() {
       const nextStatus = payload?.data?.job?.status as JobStatus;
       const nextProgress = payload?.data?.job?.progress as number;
       const err = payload?.data?.job?.error_message as string | null;
-      const resultReport = (payload?.data?.job?.options as { resultReport?: JobReport } | undefined)?.resultReport;
+      const options = payload?.data?.job?.options as JobOptionsPayload | undefined;
+      const resultReport = options?.resultReport;
       setJobStatus(nextStatus); setJobProgress(nextProgress ?? 0);
       if (resultReport) setReport(resultReport);
+      setInputFileNames((options?.inputFileNames ?? []).filter((name): name is string => typeof name === "string" && name.length > 0));
       if (nextStatus === "completed") {
         const down = await fetch(`/api/jobs/${id}/download`, { cache: "no-store" });
         const downPayload = await down.json();
@@ -96,6 +105,7 @@ export default function ImageCompressorClient() {
     setIsSubmitting(true); setStatus("converting"); setStatusMessage("جاري رفع الملفات...");
     setUploadProgress(0); setJobProgress(0); setJobStatus(null); setJobId(null); setDownloadUrl(null);
     setReport(null);
+    setInputFileNames([]);
     try {
       const uploadReq = await fetch("/api/storage/upload-url", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -120,7 +130,13 @@ export default function ImageCompressorClient() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           toolType: "image_compress",
-          inputFiles: uploads.map((u, i) => ({ path: u.path, mime: files[i].file.type || "image/jpeg", sizeBytes: files[i].file.size, orderIndex: i })),
+          inputFiles: uploads.map((u, i) => ({
+            path: u.path,
+            mime: files[i].file.type || "image/jpeg",
+            sizeBytes: files[i].file.size,
+            orderIndex: i,
+            originalName: files[i].file.name,
+          })),
           options: { quality, force: false, pngMode },
         }),
       });
@@ -226,6 +242,7 @@ export default function ImageCompressorClient() {
                 <p>الحجم الأصلي: {formatSize(report.originalSize)}</p>
                 <p>حجم الناتج: {formatSize(report.outputSize)}</p>
                 <p>نسبة التغيير: {report.savingsPercentage.toFixed(2)}%</p>
+                {inputFileNames.length > 0 && <p>الملفات: {inputFileNames.join("، ")}</p>}
                 {typeof report.skippedCount === "number" && <p>الملفات المتجاوزة: {report.skippedCount}</p>}
                 {report.outputSize > report.originalSize && <p className="text-amber-300">الناتج أكبر من الأصل بسبب نوع الملف/الجودة</p>}
               </div>

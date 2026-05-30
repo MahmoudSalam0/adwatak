@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { fail, ok } from "@/lib/api/responses";
 import { JOB_LIMITS, STORAGE_BUCKETS } from "@/lib/jobs/constants";
+import { sanitizeStorageFileName } from "@/lib/storagePath";
 import { createClient } from "@/lib/supabase/server";
 
 const requestSchema = z.object({
@@ -49,12 +50,14 @@ export async function POST(request: Request) {
     signedUploadUrl: string;
   }>;
 
-  for (const file of parsed.data.files) {
+  for (let index = 0; index < parsed.data.files.length; index++) {
+    const file = parsed.data.files[index];
     if (file.sizeBytes > JOB_LIMITS.maxFileSizeBytes) {
       return fail(`الملف ${file.fileName} يتجاوز الحد المسموح`, 400);
     }
 
-    const path = `${user.id}/${randomUUID()}-${file.fileName}`;
+    const { ext } = sanitizeStorageFileName(file.fileName);
+    const path = `${user.id}/${String(index + 1).padStart(3, "0")}-${randomUUID()}.${ext}`;
     const { data, error } = await supabase.storage
       .from(STORAGE_BUCKETS.inputs)
       .createSignedUploadUrl(path);

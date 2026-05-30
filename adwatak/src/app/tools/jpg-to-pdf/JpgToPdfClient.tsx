@@ -21,6 +21,11 @@ interface JobReport {
   savingsPercentage: number;
 }
 
+interface JobOptionsPayload {
+  resultReport?: JobReport;
+  inputFileNames?: Array<string | null>;
+}
+
 const USE_SERVER_FLOW = process.env.NEXT_PUBLIC_USE_SERVER_JPG_TO_PDF === "true";
 
 function statusToArabic(status: ServerJobStatus): string {
@@ -54,6 +59,7 @@ export default function JpgToPdfClient() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [quality, setQuality] = useState<PdfQuality>("medium");
   const [report, setReport] = useState<JobReport | null>(null);
+  const [inputFileNames, setInputFileNames] = useState<string[]>([]);
 
   const isBusy = isProcessing || isSubmitting;
 
@@ -69,11 +75,13 @@ export default function JpgToPdfClient() {
       const nextStatus = payload?.data?.job?.status as ServerJobStatus;
       const nextProgress = payload?.data?.job?.progress as number;
       const errorMessage = payload?.data?.job?.error_message as string | null;
-      const resultReport = (payload?.data?.job?.options as { resultReport?: JobReport } | undefined)?.resultReport;
+      const options = payload?.data?.job?.options as JobOptionsPayload | undefined;
+      const resultReport = options?.resultReport;
 
       setJobStatus(nextStatus);
       setJobProgress(nextProgress ?? 0);
       if (resultReport) setReport(resultReport);
+      setInputFileNames((options?.inputFileNames ?? []).filter((name): name is string => typeof name === "string" && name.length > 0));
 
       if (nextStatus === "completed") {
         const downloadRes = await fetch(`/api/jobs/${id}/download`, { cache: "no-store" });
@@ -109,6 +117,7 @@ export default function JpgToPdfClient() {
     setJobId(null);
     setDownloadUrl(null);
     setReport(null);
+    setInputFileNames([]);
 
     try {
       const uploadReq = await fetch("/api/storage/upload-url", {
@@ -156,6 +165,7 @@ export default function JpgToPdfClient() {
             mime: images[index].file.type || "image/jpeg",
             sizeBytes: images[index].file.size,
             orderIndex: index,
+            originalName: images[index].file.name,
           })),
           options: { quality },
         }),
@@ -221,6 +231,7 @@ export default function JpgToPdfClient() {
     setJobId(null);
     setDownloadUrl(null);
     setReport(null);
+    setInputFileNames([]);
   }, [clearAll]);
 
   const formatSize = (bytes: number) =>
@@ -425,6 +436,7 @@ export default function JpgToPdfClient() {
                   <p>الحجم الأصلي: {formatSize(report.originalSize)}</p>
                   <p>حجم الناتج: {formatSize(report.outputSize)}</p>
                   <p>نسبة التغيير: {report.savingsPercentage.toFixed(2)}%</p>
+                  {inputFileNames.length > 0 && <p>الملفات: {inputFileNames.join("، ")}</p>}
                   {report.outputSize > report.originalSize && (
                     <p className="text-amber-300">الناتج أكبر من الأصل بسبب نوع الملف/الجودة</p>
                   )}

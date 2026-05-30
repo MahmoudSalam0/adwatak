@@ -76,7 +76,12 @@ export async function POST(request: Request) {
       tool_type: parsed.data.toolType,
       status: "queued",
       progress: 0,
-      options: parsed.data.options ?? {},
+      options: {
+        ...(parsed.data.options ?? {}),
+        inputFileNames: parsed.data.inputFiles
+          .sort((a, b) => a.orderIndex - b.orderIndex)
+          .map((file) => file.originalName ?? null),
+      },
     })
     .select("id, status, progress, created_at")
     .single();

@@ -14,6 +14,12 @@ interface Params {
 type PngMode = "auto" | "keep-png" | "to-webp" | "to-jpg";
 type PdfQuality = "low" | "medium" | "high";
 
+function getInputFileNames(options: Record<string, unknown> | null | undefined): string[] {
+  const names = options?.inputFileNames;
+  if (!Array.isArray(names)) return [];
+  return names.map((name) => (typeof name === "string" ? name : ""));
+}
+
 function normalizePdfQuality(value: unknown): PdfQuality {
   if (value === "low" || value === "high") return value;
   return "medium";
@@ -104,13 +110,16 @@ export async function POST(_request: Request, { params }: Params) {
 
     await supabase.from("jobs").update({ progress: 80 }).eq("id", job.id);
 
+    const options = (job.options as Record<string, unknown> | null) ?? {};
+    const inputFileNames = getInputFileNames(options);
+
     let outputBytes: Uint8Array;
     let outputPath: string;
     let mimeType: string;
     let report: Record<string, unknown> = {};
 
     if (job.tool_type === "jpg_to_pdf") {
-      const pdfQuality = normalizePdfQuality((job.options as Record<string, unknown> | null)?.quality);
+      const pdfQuality = normalizePdfQuality(options.quality);
       outputBytes = await buildPdfFromImages(inputs, pdfQuality);
       outputPath = `${user.id}/${job.id}/output.pdf`;
       mimeType = "application/pdf";
@@ -132,7 +141,6 @@ export async function POST(_request: Request, { params }: Params) {
         savingsPercentage: inputTotalBytes > 0 ? ((inputTotalBytes - outputBytes.byteLength) / inputTotalBytes) * 100 : 0,
       };
     } else if (job.tool_type === "image_compress") {
-      const options = (job.options as Record<string, unknown> | null) ?? {};
       const qualityValue = typeof options.quality === "number" ? options.quality : 75;
       const quality = Math.max(60, Math.min(85, Math.round(qualityValue)));
       const force = false;
@@ -180,8 +188,11 @@ export async function POST(_request: Request, { params }: Params) {
           outputImagesTotal += compressed.byteLength;
         }
 
+        const sourceName = inputFileNames[i] || files[i]?.path?.split("/").pop() || `file-${i + 1}`;
+
         fileReports.push({
           index: i,
+          sourceName,
           inputSize: input.bytes.byteLength,
           outputSize: compressed.byteLength,
           outputMime,
@@ -228,7 +239,7 @@ export async function POST(_request: Request, { params }: Params) {
       for (let i = 0; i < inputs.length; i++) {
         const original = inputs[i].bytes;
         const sourcePath = files[i]?.path ?? `input-${i + 1}.pdf`;
-        const sourceName = sourcePath.split("/").pop() ?? sourcePath;
+        const sourceName = inputFileNames[i] || sourcePath.split("/").pop() || sourcePath;
 
         if (original.byteLength < minCompressSizeBytes) {
           smallCount += 1;

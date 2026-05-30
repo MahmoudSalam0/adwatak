@@ -19,6 +19,11 @@ interface JobReport {
   skippedCount?: number;
 }
 
+interface JobOptionsPayload {
+  resultReport?: JobReport;
+  inputFileNames?: Array<string | null>;
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
@@ -43,6 +48,7 @@ export default function PdfCompressClient() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [report, setReport] = useState<JobReport | null>(null);
+  const [inputFileNames, setInputFileNames] = useState<string[]>([]);
 
   const addFiles = useCallback((selected: File[]) => {
     const invalid: string[] = [];
@@ -69,6 +75,7 @@ export default function PdfCompressClient() {
     setJobId(null);
     setDownloadUrl(null);
     setReport(null);
+    setInputFileNames([]);
   }, []);
 
   const pollJobStatus = useCallback(async (id: string) => {
@@ -80,11 +87,13 @@ export default function PdfCompressClient() {
       const nextStatus = payload?.data?.job?.status as JobStatus;
       const nextProgress = payload?.data?.job?.progress as number;
       const errorMessage = payload?.data?.job?.error_message as string | null;
-      const resultReport = (payload?.data?.job?.options as { resultReport?: JobReport } | undefined)?.resultReport;
+      const options = payload?.data?.job?.options as JobOptionsPayload | undefined;
+      const resultReport = options?.resultReport;
 
       setJobStatus(nextStatus);
       setJobProgress(nextProgress ?? 0);
       if (resultReport) setReport(resultReport);
+      setInputFileNames((options?.inputFileNames ?? []).filter((name): name is string => typeof name === "string" && name.length > 0));
 
       if (nextStatus === "completed") {
         const hasDownload = (resultReport as { hasDownload?: boolean } | undefined)?.hasDownload !== false;
@@ -124,6 +133,7 @@ export default function PdfCompressClient() {
     setJobId(null);
     setDownloadUrl(null);
     setReport(null);
+    setInputFileNames([]);
 
     try {
       const uploadReq = await fetch("/api/storage/upload-url", {
@@ -176,6 +186,7 @@ export default function PdfCompressClient() {
             mime: "application/pdf",
             sizeBytes: files[index].file.size,
             orderIndex: index,
+            originalName: files[index].file.name,
           })),
           options: {},
         }),
@@ -269,6 +280,7 @@ export default function PdfCompressClient() {
                 <p>الحجم الأصلي: {formatSize(report.originalSize)}</p>
                 <p>حجم الناتج: {formatSize(report.outputSize)}</p>
                 <p>نسبة التغيير: {report.savingsPercentage.toFixed(2)}%</p>
+                {inputFileNames.length > 0 && <p>الملفات: {inputFileNames.join("، ")}</p>}
                 <p>عدد الملفات التي لم تتحسن: {report.skippedCount ?? 0}</p>
                 {report.outputSize >= report.originalSize && <p className="text-amber-300">الناتج أكبر من الأصل بسبب نوع الملف/الجودة</p>}
               </div>

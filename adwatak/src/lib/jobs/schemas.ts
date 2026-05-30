@@ -9,6 +9,7 @@ export const createJobSchema = z.object({
         mime: z.string().min(1),
         sizeBytes: z.number().int().positive(),
         orderIndex: z.number().int().nonnegative(),
+        originalName: z.string().min(1).optional(),
       }),
     )
     .min(1),

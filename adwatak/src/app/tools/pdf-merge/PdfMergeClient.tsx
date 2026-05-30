@@ -22,6 +22,11 @@ interface JobReport {
   savingsPercentage: number;
 }
 
+interface JobOptionsPayload {
+  resultReport?: JobReport;
+  inputFileNames?: Array<string | null>;
+}
+
 function statusToArabic(status: JobStatus): string {
   if (status === "queued") return "في الانتظار";
   if (status === "processing") return "جاري المعالجة";
@@ -46,6 +51,7 @@ export default function PdfMergeClient() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [report, setReport] = useState<JobReport | null>(null);
+  const [inputFileNames, setInputFileNames] = useState<string[]>([]);
 
   const addFiles = useCallback((selectedFiles: File[]) => {
     const nextErrors: string[] = [];
@@ -96,8 +102,9 @@ export default function PdfMergeClient() {
     setJobProgress(0);
     setJobStatus(null);
     setJobId(null);
-    setDownloadUrl(null);
-    setReport(null);
+      setDownloadUrl(null);
+      setReport(null);
+      setInputFileNames([]);
     setReport(null);
   }, []);
 
@@ -110,11 +117,13 @@ export default function PdfMergeClient() {
       const nextStatus = payload?.data?.job?.status as JobStatus;
       const nextProgress = payload?.data?.job?.progress as number;
       const errorMessage = payload?.data?.job?.error_message as string | null;
-      const resultReport = (payload?.data?.job?.options as { resultReport?: JobReport } | undefined)?.resultReport;
+      const options = payload?.data?.job?.options as JobOptionsPayload | undefined;
+      const resultReport = options?.resultReport;
 
       setJobStatus(nextStatus);
       setJobProgress(nextProgress ?? 0);
       if (resultReport) setReport(resultReport);
+      setInputFileNames((options?.inputFileNames ?? []).filter((name): name is string => typeof name === "string" && name.length > 0));
 
       if (nextStatus === "completed") {
         const down = await fetch(`/api/jobs/${id}/download`, { cache: "no-store" });
@@ -144,8 +153,9 @@ export default function PdfMergeClient() {
     setUploadProgress(0);
     setJobProgress(0);
     setJobStatus(null);
-    setJobId(null);
-    setDownloadUrl(null);
+      setJobId(null);
+      setDownloadUrl(null);
+      setInputFileNames([]);
 
     try {
       const uploadReq = await fetch("/api/storage/upload-url", {
@@ -184,6 +194,7 @@ export default function PdfMergeClient() {
             mime: "application/pdf",
             sizeBytes: files[index].file.size,
             orderIndex: index,
+            originalName: files[index].file.name,
           })),
           options: {},
         }),
@@ -354,6 +365,7 @@ export default function PdfMergeClient() {
                 <p>الحجم الأصلي: {formatSize(report.originalSize)}</p>
                 <p>حجم الناتج: {formatSize(report.outputSize)}</p>
                 <p>نسبة التغيير: {report.savingsPercentage.toFixed(2)}%</p>
+                {inputFileNames.length > 0 && <p>الملفات: {inputFileNames.join("، ")}</p>}
                 {report.outputSize > report.originalSize && (
                   <p className="text-amber-300">الناتج أكبر من الأصل بسبب نوع الملف/الجودة</p>
                 )}
