@@ -22,7 +22,7 @@
     "jszip": "^3.10.1",
     "lucide-react": "^0.400.0",
     "next": "^14.2.0",
-    "pdfjs-dist": "^4.10.38",
+    "pdfjs-dist": "^3.11.174",
     "pdf-lib": "^1.17.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
