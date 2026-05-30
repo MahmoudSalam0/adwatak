@@ -1,5 +1,6 @@
 import { PDFDocument } from "pdf-lib";
 import sharp from "sharp";
+import { createCanvas } from "@napi-rs/canvas";
 
 interface InputFile {
   bytes: Uint8Array;
@@ -13,6 +14,9 @@ interface PdfPageImage {
   fileName: string;
   bytes: Buffer;
 }
+
+const PDF_TO_IMAGES_MAX_PAGES = 120;
+const PDF_TO_IMAGES_RENDER_SCALE = 1.5;
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
@@ -93,28 +97,49 @@ export async function renderPdfPagesToImages(
   format: PdfImageFormat,
   quality: PdfQuality,
 ): Promise<PdfPageImage[]> {
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const sourcePdfBuffer = Buffer.from(input);
-  const doc = await PDFDocument.load(sourcePdfBuffer, { ignoreEncryption: false, updateMetadata: false });
-  const pageCount = doc.getPageCount();
+  const loadingTask = getDocument({ data: sourcePdfBuffer, disableWorker: true, useSystemFonts: true } as any);
+  const pdfDoc = await loadingTask.promise;
+  const pageCount = pdfDoc.numPages;
+
+  if (pageCount > PDF_TO_IMAGES_MAX_PAGES) {
+    throw new Error(`عدد صفحات PDF كبير جداً. الحد الأقصى ${PDF_TO_IMAGES_MAX_PAGES} صفحة.`);
+  }
+
   const jpgQuality = qualityToJpegValue(quality);
   const pages: PdfPageImage[] = [];
 
   for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
-    const pagePdf = await PDFDocument.create();
-    const [copiedPage] = await pagePdf.copyPages(doc, [pageIndex]);
-    pagePdf.addPage(copiedPage);
-    const singlePagePdfBytes = await pagePdf.save({ useObjectStreams: true, addDefaultPage: false, objectsPerTick: 50 });
+    const page = await pdfDoc.getPage(pageIndex + 1);
+    const viewport = page.getViewport({ scale: PDF_TO_IMAGES_RENDER_SCALE });
+    const canvas = createCanvas(Math.max(1, Math.floor(viewport.width)), Math.max(1, Math.floor(viewport.height)));
+    const context = canvas.getContext("2d");
 
-    const renderedPage = await sharp(Buffer.from(singlePagePdfBytes), { density: 160 }).png({ compressionLevel: 9 }).toBuffer();
+    await page.render({
+      canvasContext: context as unknown as CanvasRenderingContext2D,
+      viewport,
+    }).promise;
+
+    const renderedPage = canvas.toBuffer("image/png");
+
+    console.info("[pdf_to_images] page-rendered", {
+      page: pageIndex + 1,
+      viewportWidth: Math.floor(viewport.width),
+      viewportHeight: Math.floor(viewport.height),
+      renderedPngBytes: renderedPage.byteLength,
+      renderedPngSignature: renderedPage.subarray(0, 8).toString("hex"),
+    });
+
     const output =
       format === "png"
         ? await sharp(renderedPage).png({ compressionLevel: 9 }).toBuffer()
         : await sharp(renderedPage).jpeg({ quality: jpgQuality, mozjpeg: true }).toBuffer();
 
-    console.info("[pdf_to_images] page-rendered", {
+    console.info("[pdf_to_images] page-output", {
       page: pageIndex + 1,
-      renderedImageBytes: renderedPage.byteLength,
       outputFormat: format,
+      sharpInputSignature: renderedPage.subarray(0, 8).toString("hex"),
       outputBytes: output.byteLength,
     });
 
