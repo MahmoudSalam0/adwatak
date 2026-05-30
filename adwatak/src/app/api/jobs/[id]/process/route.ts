@@ -221,45 +221,114 @@ export async function POST(_request: Request, { params }: Params) {
       let improvedCount = 0;
       let skippedCount = 0;
       let improvedTotal = 0;
+      let smallCount = 0;
+
+      const minCompressSizeBytes = 100 * 1024;
 
       for (let i = 0; i < inputs.length; i++) {
         const original = inputs[i].bytes;
-        const compressed = await compressPdfBytes(original);
-        const improved = compressed.byteLength < original.byteLength;
-        const fileName = `compressed-${i + 1}.pdf`;
+        const sourcePath = files[i]?.path ?? `input-${i + 1}.pdf`;
+        const sourceName = sourcePath.split("/").pop() ?? sourcePath;
 
-        if (improved) {
-          improvedCount += 1;
-          improvedTotal += compressed.byteLength;
-          zip.file(fileName, compressed);
-        } else {
+        if (original.byteLength < minCompressSizeBytes) {
+          smallCount += 1;
           skippedCount += 1;
+          fileReports.push({
+            index: i,
+            sourceName,
+            inputSize: original.byteLength,
+            outputSize: original.byteLength,
+            improved: false,
+            skipped: true,
+            skipReason: "small_file_under_100kb",
+            message: "هذا الملف صغير جدًا (أقل من 100KB) وتأثير الضغط محدود.",
+            savingsBytes: 0,
+            savingsPercentage: 0,
+          });
+          continue;
         }
 
-        fileReports.push({
-          index: i,
-          inputSize: original.byteLength,
-          outputSize: compressed.byteLength,
-          improved,
-          skipped: !improved,
-          savingsBytes: original.byteLength - compressed.byteLength,
-          savingsPercentage:
-            original.byteLength > 0
-              ? ((original.byteLength - compressed.byteLength) / original.byteLength) * 100
-              : 0,
-        });
+        try {
+          const compressed = await compressPdfBytes(original);
+          const improved = compressed.byteLength < original.byteLength;
+          const fileName = `compressed-${i + 1}.pdf`;
+
+          if (improved) {
+            improvedCount += 1;
+            improvedTotal += compressed.byteLength;
+            zip.file(fileName, compressed);
+          } else {
+            skippedCount += 1;
+          }
+
+          const savingsBytes = original.byteLength - compressed.byteLength;
+          const savingsPercentage =
+            original.byteLength > 0 ? (savingsBytes / original.byteLength) * 100 : 0;
+
+          fileReports.push({
+            index: i,
+            sourceName,
+            inputSize: original.byteLength,
+            outputSize: compressed.byteLength,
+            improved,
+            skipped: !improved,
+            skipReason: improved ? null : "no_size_improvement",
+            message: improved ? "تم الضغط بنجاح" : "هذا الملف مضغوط مسبقًا أو لا يمكن تقليل حجمه أكثر",
+            savingsBytes,
+            savingsPercentage,
+          });
+
+          console.info("[jobs.process][pdf_compress] file-result", {
+            jobId: job.id,
+            index: i,
+            sourceName,
+            inputSize: original.byteLength,
+            outputSize: compressed.byteLength,
+            savingsBytes,
+            savingsPercentage,
+            skipped: !improved,
+            skipReason: improved ? null : "no_size_improvement",
+          });
+        } catch (compressError) {
+          skippedCount += 1;
+          const reason =
+            compressError instanceof Error
+              ? compressError.message
+              : "فشل غير متوقع أثناء ضغط الملف";
+
+          fileReports.push({
+            index: i,
+            sourceName,
+            inputSize: original.byteLength,
+            outputSize: null,
+            improved: false,
+            skipped: true,
+            skipReason: "compress_error",
+            message: "تعذر ضغط هذا الملف، وتم تخطيه.",
+            error: reason,
+            savingsBytes: 0,
+            savingsPercentage: 0,
+          });
+
+          console.error("[jobs.process][pdf_compress] file-error", {
+            jobId: job.id,
+            index: i,
+            sourceName,
+            inputSize: original.byteLength,
+            skipReason: "compress_error",
+            error: reason,
+          });
+        }
       }
 
-      if (improvedCount === 0) {
-        throw new Error("الملفات مضغوطة مسبقًا أو لا يمكن تقليلها بالجودة الحالية");
-      }
+      const allSkipped = improvedCount === 0;
 
       if (improvedCount === 1) {
         const first = Object.values(zip.files)[0];
         outputBytes = await first.async("uint8array");
         outputPath = `${user.id}/${job.id}/output.pdf`;
         mimeType = "application/pdf";
-      } else {
+      } else if (improvedCount > 1) {
         outputBytes = await zip.generateAsync({
           type: "uint8array",
           compression: "DEFLATE",
@@ -267,63 +336,89 @@ export async function POST(_request: Request, { params }: Params) {
         });
         outputPath = `${user.id}/${job.id}/output.zip`;
         mimeType = "application/zip";
+      } else {
+        outputBytes = new Uint8Array();
+        outputPath = "";
+        mimeType = "application/octet-stream";
       }
 
       report = {
         originalSize: inputTotalBytes,
-        outputSize: outputBytes.byteLength,
+        outputSize: improvedCount > 0 ? outputBytes.byteLength : inputTotalBytes,
         improvedContentSize: improvedTotal,
         improvedCount,
         skippedCount,
-        savingsBytes: inputTotalBytes - outputBytes.byteLength,
-        savingsPercentage: inputTotalBytes > 0 ? ((inputTotalBytes - outputBytes.byteLength) / inputTotalBytes) * 100 : 0,
+        smallCount,
+        hasDownload: improvedCount > 0,
+        allSkipped,
+        summaryMessage:
+          improvedCount > 0
+            ? "تم ضغط بعض الملفات، وتم تخطي الملفات غير القابلة للتحسين."
+            : "كل الملفات مضغوطة مسبقًا أو لا يمكن تقليلها أكثر.",
+        savingsBytes: improvedCount > 0 ? inputTotalBytes - outputBytes.byteLength : 0,
+        savingsPercentage:
+          improvedCount > 0 && inputTotalBytes > 0
+            ? ((inputTotalBytes - outputBytes.byteLength) / inputTotalBytes) * 100
+            : 0,
         files: fileReports,
       };
+
+      console.info("[jobs.process][pdf_compress] summary", {
+        jobId: job.id,
+        inputTotalBytes,
+        outputTotalBytes: improvedCount > 0 ? outputBytes.byteLength : null,
+        improvedCount,
+        skippedCount,
+        smallCount,
+        allSkipped,
+      });
     }
 
-    const fileSize = outputBytes.byteLength;
+    if (outputBytes.byteLength > 0 && outputPath) {
+      const fileSize = outputBytes.byteLength;
 
-    const { error: uploadError } = await admin.storage
-      .from(STORAGE_BUCKETS.outputs)
-      .upload(outputPath, outputBytes, {
-        upsert: true,
-        contentType: mimeType,
-      });
+      const { error: uploadError } = await admin.storage
+        .from(STORAGE_BUCKETS.outputs)
+        .upload(outputPath, outputBytes, {
+          upsert: true,
+          contentType: mimeType,
+        });
 
-    if (uploadError) {
-      console.error("[jobs.process] output upload failed", {
+      if (uploadError) {
+        console.error("[jobs.process] output upload failed", {
+          jobId: job.id,
+          userId: user.id,
+          outputPath,
+          mimeType,
+          fileSize,
+          uploadError: {
+            name: uploadError.name,
+            message: uploadError.message,
+          },
+        });
+        throw new Error(`تعذر رفع ملف الناتج: ${uploadError.message}`);
+      }
+
+      console.info("[jobs.process] output upload success", {
         jobId: job.id,
         userId: user.id,
         outputPath,
         mimeType,
         fileSize,
-        uploadError: {
-          name: uploadError.name,
-          message: uploadError.message,
-        },
       });
-      throw new Error(`تعذر رفع ملف الناتج: ${uploadError.message}`);
-    }
 
-    console.info("[jobs.process] output upload success", {
-      jobId: job.id,
-      userId: user.id,
-      outputPath,
-      mimeType,
-      fileSize,
-    });
+      const { error: outputInsertError } = await supabase.from("job_files").insert({
+        job_id: job.id,
+        kind: "output",
+        path: outputPath,
+        mime: mimeType,
+        size_bytes: outputBytes.byteLength,
+        order_index: 0,
+      });
 
-    const { error: outputInsertError } = await supabase.from("job_files").insert({
-      job_id: job.id,
-      kind: "output",
-      path: outputPath,
-      mime: mimeType,
-      size_bytes: outputBytes.byteLength,
-      order_index: 0,
-    });
-
-    if (outputInsertError) {
-      throw new Error("تعذر حفظ ملف المخرجات في قاعدة البيانات");
+      if (outputInsertError) {
+        throw new Error("تعذر حفظ ملف المخرجات في قاعدة البيانات");
+      }
     }
 
     await supabase
@@ -350,6 +445,12 @@ export async function POST(_request: Request, { params }: Params) {
     return ok({ status: "completed" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "حدث خطأ أثناء المعالجة";
+
+    console.error("[jobs.process] fatal-error", {
+      jobId: job.id,
+      toolType: job.tool_type,
+      message,
+    });
 
     await supabase
       .from("jobs")

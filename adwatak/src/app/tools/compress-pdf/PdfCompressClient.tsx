@@ -87,12 +87,18 @@ export default function PdfCompressClient() {
       if (resultReport) setReport(resultReport);
 
       if (nextStatus === "completed") {
-        const down = await fetch(`/api/jobs/${id}/download`, { cache: "no-store" });
-        const downPayload = await down.json();
-        if (!down.ok) throw new Error(downPayload?.error?.message ?? "تعذر إنشاء رابط التحميل");
-        setDownloadUrl(downPayload?.data?.url ?? null);
+        const hasDownload = (resultReport as { hasDownload?: boolean } | undefined)?.hasDownload !== false;
+        if (hasDownload) {
+          const down = await fetch(`/api/jobs/${id}/download`, { cache: "no-store" });
+          const downPayload = await down.json();
+          if (!down.ok) throw new Error(downPayload?.error?.message ?? "تعذر إنشاء رابط التحميل");
+          setDownloadUrl(downPayload?.data?.url ?? null);
+        } else {
+          setDownloadUrl(null);
+        }
         setStatus("success");
-        setStatusMessage("تم ضغط ملفات PDF بنجاح");
+        const summary = (resultReport as { summaryMessage?: string } | undefined)?.summaryMessage;
+        setStatusMessage(summary ?? "تم إنهاء معالجة ملفات PDF");
         return;
       }
 
