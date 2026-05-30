@@ -98,8 +98,8 @@ export async function renderPdfPagesToImages(
   quality: PdfQuality,
 ): Promise<PdfPageImage[]> {
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const sourcePdfBuffer = Buffer.from(input);
-  const loadingTask = getDocument({ data: sourcePdfBuffer, disableWorker: true, useSystemFonts: true } as any);
+  const pdfBytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  const loadingTask = getDocument({ data: pdfBytes, disableWorker: true, useSystemFonts: true } as any);
   const pdfDoc = await loadingTask.promise;
   const pageCount = pdfDoc.numPages;
 
