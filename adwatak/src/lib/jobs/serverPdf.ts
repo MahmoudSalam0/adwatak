@@ -1,7 +1,7 @@
 import { PDFDocument } from "pdf-lib";
 import sharp from "sharp";
 import { createCanvas } from "@napi-rs/canvas";
-import { createRequire } from "module";
+import { createRequire } from "node:module";
 
 interface InputFile {
   bytes: Uint8Array;
@@ -101,10 +101,13 @@ export async function renderPdfPagesToImages(
 ): Promise<PdfPageImage[]> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.js");
   const { getDocument, GlobalWorkerOptions } = pdfjs;
-  const workerSrc = require.resolve("pdfjs-dist/legacy/build/pdf.worker.js");
-  GlobalWorkerOptions.workerSrc = workerSrc;
+  const workerPath = require.resolve("pdfjs-dist/legacy/build/pdf.worker.js");
+  GlobalWorkerOptions.workerSrc = workerPath.toString();
 
-  console.info("[pdf_to_images] pdfjs-worker", { workerSrc });
+  console.log("[pdf_to_images] pdfjs-worker", {
+    workerPath,
+    type: typeof workerPath,
+  });
 
   const pdfBytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
   const loadingTask = getDocument({
