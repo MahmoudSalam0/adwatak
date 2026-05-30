@@ -13,6 +13,13 @@ import { convertToPdf, downloadPdf } from "@/lib/pdfUtils";
 import { uploadWithProgress } from "@/lib/jobs/upload";
 
 type ServerJobStatus = "queued" | "processing" | "completed" | "failed";
+type PdfQuality = "low" | "medium" | "high";
+
+interface JobReport {
+  originalSize: number;
+  outputSize: number;
+  savingsPercentage: number;
+}
 
 const USE_SERVER_FLOW = process.env.NEXT_PUBLIC_USE_SERVER_JPG_TO_PDF === "true";
 
@@ -45,6 +52,8 @@ export default function JpgToPdfClient() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [quality, setQuality] = useState<PdfQuality>("medium");
+  const [report, setReport] = useState<JobReport | null>(null);
 
   const isBusy = isProcessing || isSubmitting;
 
@@ -60,9 +69,11 @@ export default function JpgToPdfClient() {
       const nextStatus = payload?.data?.job?.status as ServerJobStatus;
       const nextProgress = payload?.data?.job?.progress as number;
       const errorMessage = payload?.data?.job?.error_message as string | null;
+      const resultReport = (payload?.data?.job?.options as { resultReport?: JobReport } | undefined)?.resultReport;
 
       setJobStatus(nextStatus);
       setJobProgress(nextProgress ?? 0);
+      if (resultReport) setReport(resultReport);
 
       if (nextStatus === "completed") {
         const downloadRes = await fetch(`/api/jobs/${id}/download`, { cache: "no-store" });
@@ -97,6 +108,7 @@ export default function JpgToPdfClient() {
     setJobStatus(null);
     setJobId(null);
     setDownloadUrl(null);
+    setReport(null);
 
     try {
       const uploadReq = await fetch("/api/storage/upload-url", {
@@ -145,7 +157,7 @@ export default function JpgToPdfClient() {
             sizeBytes: images[index].file.size,
             orderIndex: index,
           })),
-          options: {},
+          options: { quality },
         }),
       });
 
@@ -172,7 +184,7 @@ export default function JpgToPdfClient() {
       setIsSubmitting(false);
       setIsProcessing(false);
     }
-  }, [images, isSubmitting, pollJobStatus, setIsProcessing]);
+  }, [images, isSubmitting, pollJobStatus, quality, setIsProcessing]);
 
   const handleConvert = useCallback(async () => {
     if (USE_SERVER_FLOW) {
@@ -208,7 +220,11 @@ export default function JpgToPdfClient() {
     setJobStatus(null);
     setJobId(null);
     setDownloadUrl(null);
+    setReport(null);
   }, [clearAll]);
+
+  const formatSize = (bytes: number) =>
+    bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 
   const totalSize = images.reduce((acc, img) => acc + img.file.size, 0);
   const sizeText =
@@ -314,6 +330,25 @@ export default function JpgToPdfClient() {
                 </button>
               </div>
 
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+                <p className="mb-2 text-sm text-gray-300">جودة PDF</p>
+                <div className="flex gap-2">
+                  {(["low", "medium", "high"] as PdfQuality[]).map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => setQuality(q)}
+                      className={`rounded-lg px-3 py-1.5 text-sm transition ${
+                        quality === q ? "bg-blue-500 text-white" : "bg-white/5 text-gray-300 hover:bg-white/10"
+                      } disabled:opacity-50`}
+                    >
+                      {q === "low" ? "منخفض" : q === "medium" ? "متوسط" : "عالي"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Images grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {images.map((img, index) => (
@@ -383,6 +418,17 @@ export default function JpgToPdfClient() {
                 >
                   {statusMessage}
                 </motion.p>
+              )}
+
+              {report && (
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 text-sm text-gray-300 space-y-1">
+                  <p>الحجم الأصلي: {formatSize(report.originalSize)}</p>
+                  <p>حجم الناتج: {formatSize(report.outputSize)}</p>
+                  <p>نسبة التغيير: {report.savingsPercentage.toFixed(2)}%</p>
+                  {report.outputSize > report.originalSize && (
+                    <p className="text-amber-300">الناتج أكبر من الأصل بسبب نوع الملف/الجودة</p>
+                  )}
+                </div>
               )}
             </motion.div>
           )}

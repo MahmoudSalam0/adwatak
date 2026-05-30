@@ -11,6 +11,19 @@ interface Params {
   params: { id: string };
 }
 
+type PngMode = "auto" | "keep-png" | "to-webp" | "to-jpg";
+type PdfQuality = "low" | "medium" | "high";
+
+function normalizePdfQuality(value: unknown): PdfQuality {
+  if (value === "low" || value === "high") return value;
+  return "medium";
+}
+
+function normalizePngMode(value: unknown): PngMode {
+  if (value === "keep-png" || value === "to-webp" || value === "to-jpg") return value;
+  return "auto";
+}
+
 export async function POST(_request: Request, { params }: Params) {
   const supabase = createClient();
   const admin = createAdminClient();
@@ -24,7 +37,7 @@ export async function POST(_request: Request, { params }: Params) {
 
   const { data: job, error: jobError } = await supabase
     .from("jobs")
-    .select("id, tool_type, status")
+    .select("id, tool_type, status, options")
     .eq("id", params.id)
     .single();
 
@@ -89,30 +102,114 @@ export async function POST(_request: Request, { params }: Params) {
     let outputBytes: Uint8Array;
     let outputPath: string;
     let mimeType: string;
+    let report: Record<string, unknown> = {};
 
     if (job.tool_type === "jpg_to_pdf") {
-      outputBytes = await buildPdfFromImages(inputs);
+      const pdfQuality = normalizePdfQuality((job.options as Record<string, unknown> | null)?.quality);
+      outputBytes = await buildPdfFromImages(inputs, pdfQuality);
       outputPath = `${user.id}/${job.id}/output.pdf`;
       mimeType = "application/pdf";
+      report = {
+        quality: pdfQuality,
+        originalSize: inputTotalBytes,
+        outputSize: outputBytes.byteLength,
+        savingsBytes: inputTotalBytes - outputBytes.byteLength,
+        savingsPercentage: inputTotalBytes > 0 ? ((inputTotalBytes - outputBytes.byteLength) / inputTotalBytes) * 100 : 0,
+      };
     } else if (job.tool_type === "pdf_merge") {
       outputBytes = await mergePdfFiles(inputs.map((input) => input.bytes));
       outputPath = `${user.id}/${job.id}/output.pdf`;
       mimeType = "application/pdf";
+      report = {
+        originalSize: inputTotalBytes,
+        outputSize: outputBytes.byteLength,
+        savingsBytes: inputTotalBytes - outputBytes.byteLength,
+        savingsPercentage: inputTotalBytes > 0 ? ((inputTotalBytes - outputBytes.byteLength) / inputTotalBytes) * 100 : 0,
+      };
     } else {
+      const options = (job.options as Record<string, unknown> | null) ?? {};
+      const qualityValue = typeof options.quality === "number" ? options.quality : 75;
+      const quality = Math.max(60, Math.min(85, Math.round(qualityValue)));
+      const force = Boolean(options.force);
+      const pngMode = normalizePngMode(options.pngMode);
       const zip = new JSZip();
+      const fileReports: Array<Record<string, unknown>> = [];
+      let outputImagesTotal = 0;
+      let skippedCount = 0;
+
       for (let i = 0; i < inputs.length; i++) {
         const input = inputs[i];
-        const isPng = input.mime === "image/png";
-        const ext = isPng ? "png" : "jpg";
-        const compressed = isPng
-          ? await sharp(input.bytes).png({ compressionLevel: 9 }).toBuffer()
-          : await sharp(input.bytes).jpeg({ quality: 70, mozjpeg: true }).toBuffer();
-        zip.file(`compressed-${i + 1}.${ext}`, compressed);
+        const metadata = await sharp(input.bytes).metadata();
+        const hasAlpha = Boolean(metadata.hasAlpha);
+        const isPngInput = input.mime === "image/png";
+
+        let compressed: Buffer;
+        let ext = "jpg";
+        let outputMime = "image/jpeg";
+
+        if (isPngInput) {
+          if (pngMode === "keep-png") {
+            compressed = await sharp(input.bytes).png({ compressionLevel: 9 }).toBuffer();
+            ext = "png";
+            outputMime = "image/png";
+          } else if (pngMode === "to-webp" || (pngMode === "auto" && hasAlpha)) {
+            compressed = await sharp(input.bytes).webp({ quality }).toBuffer();
+            ext = "webp";
+            outputMime = "image/webp";
+          } else {
+            compressed = await sharp(input.bytes).jpeg({ quality, mozjpeg: true }).toBuffer();
+            ext = "jpg";
+            outputMime = "image/jpeg";
+          }
+        } else {
+          compressed = await sharp(input.bytes).jpeg({ quality, mozjpeg: true }).toBuffer();
+          ext = "jpg";
+          outputMime = "image/jpeg";
+        }
+
+        const shouldSkip = !force && compressed.byteLength >= input.bytes.byteLength;
+        if (shouldSkip) {
+          skippedCount += 1;
+        } else {
+          zip.file(`compressed-${i + 1}.${ext}`, compressed);
+          outputImagesTotal += compressed.byteLength;
+        }
+
+        fileReports.push({
+          index: i,
+          inputSize: input.bytes.byteLength,
+          outputSize: compressed.byteLength,
+          outputMime,
+          skipped: shouldSkip,
+          savingsBytes: input.bytes.byteLength - compressed.byteLength,
+          savingsPercentage:
+            input.bytes.byteLength > 0
+              ? ((input.bytes.byteLength - compressed.byteLength) / input.bytes.byteLength) * 100
+              : 0,
+        });
       }
+
+      if (zip.files && Object.keys(zip.files).length === 0) {
+        throw new Error("لم يتم إنشاء ملفات مضغوطة أصغر من الأصل. فعّل خيار force لإجبار التصدير.");
+      }
+
       const zipBuffer = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE", compressionOptions: { level: 9 } });
       outputBytes = zipBuffer;
       outputPath = `${user.id}/${job.id}/output.zip`;
       mimeType = "application/zip";
+      report = {
+        quality,
+        force,
+        pngMode,
+        originalSize: inputTotalBytes,
+        outputSize: outputBytes.byteLength,
+        compressedImagesSize: outputImagesTotal,
+        skippedCount,
+        processedCount: inputs.length,
+        savingsBytes: inputTotalBytes - outputBytes.byteLength,
+        savingsPercentage: inputTotalBytes > 0 ? ((inputTotalBytes - outputBytes.byteLength) / inputTotalBytes) * 100 : 0,
+        files: fileReports,
+      };
     }
 
     const fileSize = outputBytes.byteLength;
@@ -136,7 +233,7 @@ export async function POST(_request: Request, { params }: Params) {
           message: uploadError.message,
         },
       });
-      throw new Error(`تعذر رفع ملف PDF الناتج: ${uploadError.message}`);
+      throw new Error(`تعذر رفع ملف الناتج: ${uploadError.message}`);
     }
 
     console.info("[jobs.process] output upload success", {
@@ -151,7 +248,7 @@ export async function POST(_request: Request, { params }: Params) {
       job_id: job.id,
       kind: "output",
       path: outputPath,
-      mime: "application/pdf",
+      mime: mimeType,
       size_bytes: outputBytes.byteLength,
       order_index: 0,
     });
@@ -162,7 +259,12 @@ export async function POST(_request: Request, { params }: Params) {
 
     await supabase
       .from("jobs")
-      .update({ status: "completed", progress: 100, finished_at: new Date().toISOString() })
+      .update({
+        status: "completed",
+        progress: 100,
+        finished_at: new Date().toISOString(),
+        options: { ...((job.options as Record<string, unknown> | null) ?? {}), resultReport: report },
+      })
       .eq("id", job.id);
 
     const durationMs = Date.now() - startedAt.getTime();

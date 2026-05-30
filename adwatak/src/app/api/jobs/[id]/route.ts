@@ -17,7 +17,7 @@ export async function GET(_request: Request, { params }: Params) {
 
   const { data: job, error } = await supabase
     .from("jobs")
-    .select("id, status, tool_type, progress, error_message, created_at, started_at, finished_at")
+    .select("id, status, tool_type, progress, error_message, created_at, started_at, finished_at, options")
     .eq("id", params.id)
     .single();
 

@@ -16,6 +16,12 @@ interface PdfItem {
   file: File;
 }
 
+interface JobReport {
+  originalSize: number;
+  outputSize: number;
+  savingsPercentage: number;
+}
+
 function statusToArabic(status: JobStatus): string {
   if (status === "queued") return "في الانتظار";
   if (status === "processing") return "جاري المعالجة";
@@ -39,6 +45,7 @@ export default function PdfMergeClient() {
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [report, setReport] = useState<JobReport | null>(null);
 
   const addFiles = useCallback((selectedFiles: File[]) => {
     const nextErrors: string[] = [];
@@ -90,6 +97,8 @@ export default function PdfMergeClient() {
     setJobStatus(null);
     setJobId(null);
     setDownloadUrl(null);
+    setReport(null);
+    setReport(null);
   }, []);
 
   const pollJobStatus = useCallback(async (id: string) => {
@@ -101,9 +110,11 @@ export default function PdfMergeClient() {
       const nextStatus = payload?.data?.job?.status as JobStatus;
       const nextProgress = payload?.data?.job?.progress as number;
       const errorMessage = payload?.data?.job?.error_message as string | null;
+      const resultReport = (payload?.data?.job?.options as { resultReport?: JobReport } | undefined)?.resultReport;
 
       setJobStatus(nextStatus);
       setJobProgress(nextProgress ?? 0);
+      if (resultReport) setReport(resultReport);
 
       if (nextStatus === "completed") {
         const down = await fetch(`/api/jobs/${id}/download`, { cache: "no-store" });
@@ -336,6 +347,17 @@ export default function PdfMergeClient() {
               <p className={`text-sm text-center ${status === "success" ? "text-emerald-400" : "text-red-400"}`}>
                 {statusMessage}
               </p>
+            )}
+
+            {report && (
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 text-sm text-gray-300 space-y-1">
+                <p>الحجم الأصلي: {formatSize(report.originalSize)}</p>
+                <p>حجم الناتج: {formatSize(report.outputSize)}</p>
+                <p>نسبة التغيير: {report.savingsPercentage.toFixed(2)}%</p>
+                {report.outputSize > report.originalSize && (
+                  <p className="text-amber-300">الناتج أكبر من الأصل بسبب نوع الملف/الجودة</p>
+                )}
+              </div>
             )}
           </div>
         )}

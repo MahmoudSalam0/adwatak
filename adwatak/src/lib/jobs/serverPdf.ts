@@ -1,26 +1,38 @@
 import { PDFDocument } from "pdf-lib";
+import sharp from "sharp";
 
 interface InputFile {
   bytes: Uint8Array;
   mime: string;
 }
 
+type PdfQuality = "low" | "medium" | "high";
+
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
 const PAGE_MARGIN = 24;
 
-export async function buildPdfFromImages(files: InputFile[]): Promise<Uint8Array> {
+function qualityToJpegValue(quality: PdfQuality): number {
+  if (quality === "low") return 70;
+  if (quality === "high") return 86;
+  return 78;
+}
+
+export async function buildPdfFromImages(files: InputFile[], quality: PdfQuality = "medium"): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
+  const jpegQuality = qualityToJpegValue(quality);
 
   for (const file of files) {
     let image;
+    const metadata = await sharp(file.bytes).metadata();
+    const hasAlpha = Boolean(metadata.hasAlpha);
 
-    if (file.mime === "image/jpeg" || file.mime === "image/jpg") {
-      image = await pdf.embedJpg(file.bytes);
-    } else if (file.mime === "image/png") {
-      image = await pdf.embedPng(file.bytes);
+    if (hasAlpha) {
+      const pngBytes = await sharp(file.bytes).png({ compressionLevel: 9 }).toBuffer();
+      image = await pdf.embedPng(pngBytes);
     } else {
-      throw new Error(`نوع الصورة غير مدعوم على السيرفر: ${file.mime}`);
+      const jpgBytes = await sharp(file.bytes).jpeg({ quality: jpegQuality, mozjpeg: true }).toBuffer();
+      image = await pdf.embedJpg(jpgBytes);
     }
 
     const page = pdf.addPage([A4_WIDTH, A4_HEIGHT]);
@@ -35,7 +47,7 @@ export async function buildPdfFromImages(files: InputFile[]): Promise<Uint8Array
     page.drawImage(image, { x, y, width, height });
   }
 
-  return pdf.save();
+  return pdf.save({ useObjectStreams: true, addDefaultPage: false, objectsPerTick: 50 });
 }
 
 export async function mergePdfFiles(files: Uint8Array[]): Promise<Uint8Array> {
@@ -54,5 +66,5 @@ export async function mergePdfFiles(files: Uint8Array[]): Promise<Uint8Array> {
     }
   }
 
-  return merged.save();
+  return merged.save({ useObjectStreams: true, addDefaultPage: false, objectsPerTick: 50 });
 }

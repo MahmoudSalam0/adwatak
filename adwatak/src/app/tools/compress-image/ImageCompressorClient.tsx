@@ -11,6 +11,19 @@ import { uploadWithProgress } from "@/lib/jobs/upload";
 
 type JobStatus = "queued" | "processing" | "completed" | "failed";
 interface Item { id: string; file: File }
+type PngMode = "auto" | "keep-png" | "to-webp" | "to-jpg";
+
+interface JobReport {
+  originalSize: number;
+  outputSize: number;
+  savingsPercentage: number;
+  skippedCount?: number;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
 
 function statusToArabic(status: JobStatus): string {
   if (status === "queued") return "في الانتظار";
@@ -30,6 +43,10 @@ export default function ImageCompressorClient() {
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [quality, setQuality] = useState(75);
+  const [force, setForce] = useState(false);
+  const [pngMode, setPngMode] = useState<PngMode>("auto");
+  const [report, setReport] = useState<JobReport | null>(null);
 
   const addFiles = useCallback((selected: File[]) => {
     const invalid: string[] = [];
@@ -47,6 +64,7 @@ export default function ImageCompressorClient() {
   const reset = useCallback(() => {
     setFiles([]); setErrors([]); setStatus("idle"); setStatusMessage("");
     setUploadProgress(0); setJobProgress(0); setJobStatus(null); setJobId(null); setDownloadUrl(null);
+    setReport(null);
   }, []);
 
   const poll = useCallback(async (id: string) => {
@@ -57,7 +75,9 @@ export default function ImageCompressorClient() {
       const nextStatus = payload?.data?.job?.status as JobStatus;
       const nextProgress = payload?.data?.job?.progress as number;
       const err = payload?.data?.job?.error_message as string | null;
+      const resultReport = (payload?.data?.job?.options as { resultReport?: JobReport } | undefined)?.resultReport;
       setJobStatus(nextStatus); setJobProgress(nextProgress ?? 0);
+      if (resultReport) setReport(resultReport);
       if (nextStatus === "completed") {
         const down = await fetch(`/api/jobs/${id}/download`, { cache: "no-store" });
         const downPayload = await down.json();
@@ -76,6 +96,7 @@ export default function ImageCompressorClient() {
     if (!files.length || isSubmitting) return;
     setIsSubmitting(true); setStatus("converting"); setStatusMessage("جاري رفع الملفات...");
     setUploadProgress(0); setJobProgress(0); setJobStatus(null); setJobId(null); setDownloadUrl(null);
+    setReport(null);
     try {
       const uploadReq = await fetch("/api/storage/upload-url", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -101,7 +122,7 @@ export default function ImageCompressorClient() {
         body: JSON.stringify({
           toolType: "image_compress",
           inputFiles: uploads.map((u, i) => ({ path: u.path, mime: files[i].file.type || "image/jpeg", sizeBytes: files[i].file.size, orderIndex: i })),
-          options: { quality: 70 },
+          options: { quality, force, pngMode },
         }),
       });
       const jobPayload = await jobReq.json();
@@ -120,7 +141,7 @@ export default function ImageCompressorClient() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [files, isSubmitting, poll]);
+  }, [files, force, isSubmitting, pngMode, poll, quality]);
 
   return (
     <ToolLayout
@@ -149,6 +170,44 @@ export default function ImageCompressorClient() {
               <button onClick={reset} disabled={isSubmitting} className="flex items-center gap-1 text-sm text-red-400 disabled:opacity-50"><Trash2 className="h-4 w-4" /> حذف الكل</button>
             </div>
 
+            <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 space-y-3">
+              <div>
+                <p className="text-sm text-gray-300 mb-1">جودة الضغط (JPG/WebP)</p>
+                <input
+                  type="range"
+                  min={60}
+                  max={85}
+                  value={quality}
+                  disabled={isSubmitting}
+                  onChange={(e) => setQuality(Number(e.target.value))}
+                  className="w-full"
+                />
+                <p className="text-xs text-gray-400">{quality}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  ["auto", "PNG تلقائي"],
+                  ["keep-png", "الإبقاء PNG"],
+                  ["to-webp", "تحويل WebP"],
+                  ["to-jpg", "تحويل JPG"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => setPngMode(value)}
+                    className={`rounded-lg px-3 py-1.5 text-sm ${pngMode === value ? "bg-emerald-500 text-white" : "bg-white/5 text-gray-300"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 text-sm text-gray-300">
+                <input type="checkbox" checked={force} disabled={isSubmitting} onChange={(e) => setForce(e.target.checked)} />
+                تصدير حتى لو الناتج أكبر من الأصل
+              </label>
+            </div>
+
             {status === "converting" && (
               <div className="rounded-xl border border-white/[0.08] bg-white/[0.04] p-4 space-y-3">
                 <div className="flex items-center justify-between text-sm text-gray-300"><span>{uploadProgress < 100 ? "جاري رفع الملفات" : "جاري تجهيز المهمة"}</span><span>{uploadProgress}%</span></div>
@@ -166,6 +225,15 @@ export default function ImageCompressorClient() {
               {status !== "idle" && status !== "converting" && <Button onClick={reset} variant="secondary"><RotateCcw className="h-5 w-5" /> إعادة</Button>}
             </div>
             {statusMessage && status !== "converting" && <p className={`text-sm text-center ${status === "success" ? "text-emerald-400" : "text-red-400"}`}>{statusMessage}</p>}
+            {report && (
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 text-sm text-gray-300 space-y-1">
+                <p>الحجم الأصلي: {formatSize(report.originalSize)}</p>
+                <p>حجم الناتج: {formatSize(report.outputSize)}</p>
+                <p>نسبة التغيير: {report.savingsPercentage.toFixed(2)}%</p>
+                {typeof report.skippedCount === "number" && <p>الملفات المتجاوزة: {report.skippedCount}</p>}
+                {report.outputSize > report.originalSize && <p className="text-amber-300">الناتج أكبر من الأصل بسبب نوع الملف/الجودة</p>}
+              </div>
+            )}
           </div>
         )}
       </div>

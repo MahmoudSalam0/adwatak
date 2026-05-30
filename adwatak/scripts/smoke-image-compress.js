@@ -68,8 +68,34 @@ async function main() {
   if (upOut.error) throw new Error(`output upload failed: ${upOut.error.message}`);
 
   await supabase.from("job_files").insert({ job_id: jobId, kind: "output", path: outputPath, mime: "application/zip", size_bytes: out.length, order_index: 0 });
-  await supabase.from("jobs").update({ status: "completed", progress: 100, finished_at: new Date().toISOString(), error_message: null }).eq("id", jobId);
-  await supabase.from("usage_logs").insert({ user_id: userId, tool_type: "image_compress", job_id: jobId, input_total_bytes: inputA.length + inputB.length, output_total_bytes: out.length, duration_ms: 1, status: "completed" });
+  const inputTotal = inputA.length + inputB.length;
+  if (out.length >= inputTotal) {
+    throw new Error(`output is not smaller than input (input=${inputTotal}, output=${out.length})`);
+  }
+
+  await supabase
+    .from("jobs")
+    .update({
+      status: "completed",
+      progress: 100,
+      finished_at: new Date().toISOString(),
+      error_message: null,
+      options: {
+        quality: 70,
+        force: false,
+        pngMode: "auto",
+        resultReport: {
+          originalSize: inputTotal,
+          outputSize: out.length,
+          savingsPercentage: ((inputTotal - out.length) / inputTotal) * 100,
+          skippedCount: 0,
+        },
+      },
+    })
+    .eq("id", jobId);
+  await supabase
+    .from("usage_logs")
+    .insert({ user_id: userId, tool_type: "image_compress", job_id: jobId, input_total_bytes: inputTotal, output_total_bytes: out.length, duration_ms: 1, status: "completed" });
 
   const signed = await supabase.storage.from("job-outputs").createSignedUrl(outputPath, 600);
   if (signed.error || !signed.data?.signedUrl) throw new Error(`signed url failed: ${signed.error?.message}`);
