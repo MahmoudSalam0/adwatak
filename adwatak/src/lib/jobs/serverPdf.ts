@@ -1,6 +1,7 @@
 import { PDFDocument } from "pdf-lib";
 import sharp from "sharp";
 import { createCanvas } from "@napi-rs/canvas";
+import { createRequire } from "module";
 
 interface InputFile {
   bytes: Uint8Array;
@@ -17,6 +18,7 @@ interface PdfPageImage {
 
 const PDF_TO_IMAGES_MAX_PAGES = 120;
 const PDF_TO_IMAGES_RENDER_SCALE = 1.5;
+const require = createRequire(import.meta.url);
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
@@ -98,12 +100,15 @@ export async function renderPdfPagesToImages(
   quality: PdfQuality,
 ): Promise<PdfPageImage[]> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.js");
-  const { getDocument } = pdfjs;
+  const { getDocument, GlobalWorkerOptions } = pdfjs;
+  const workerSrc = require.resolve("pdfjs-dist/legacy/build/pdf.worker.js");
+  GlobalWorkerOptions.workerSrc = workerSrc;
+
+  console.info("[pdf_to_images] pdfjs-worker", { workerSrc });
 
   const pdfBytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
   const loadingTask = getDocument({
     data: pdfBytes,
-    disableWorker: true,
     isEvalSupported: false,
     useSystemFonts: true,
   } as any);
