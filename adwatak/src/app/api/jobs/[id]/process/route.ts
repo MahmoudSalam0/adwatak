@@ -1,6 +1,7 @@
 import { fail, ok } from "@/lib/api/responses";
 import { STORAGE_BUCKETS } from "@/lib/jobs/constants";
 import { buildPdfFromImages } from "@/lib/jobs/serverPdf";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 interface Params {
@@ -9,6 +10,7 @@ interface Params {
 
 export async function POST(_request: Request, { params }: Params) {
   const supabase = createClient();
+  const admin = createAdminClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -82,18 +84,39 @@ export async function POST(_request: Request, { params }: Params) {
     await supabase.from("jobs").update({ progress: 80 }).eq("id", job.id);
 
     const outputBytes = await buildPdfFromImages(inputs);
-    const outputPath = `${user.id}/${job.id}/result.pdf`;
+    const outputPath = `${user.id}/${job.id}/output.pdf`;
+    const mimeType = "application/pdf";
+    const fileSize = outputBytes.byteLength;
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await admin.storage
       .from(STORAGE_BUCKETS.outputs)
       .upload(outputPath, outputBytes, {
         upsert: true,
-        contentType: "application/pdf",
+        contentType: mimeType,
       });
 
     if (uploadError) {
-      throw new Error("تعذر رفع ملف PDF الناتج");
+      console.error("[jobs.process] output upload failed", {
+        jobId: job.id,
+        userId: user.id,
+        outputPath,
+        mimeType,
+        fileSize,
+        uploadError: {
+          name: uploadError.name,
+          message: uploadError.message,
+        },
+      });
+      throw new Error(`تعذر رفع ملف PDF الناتج: ${uploadError.message}`);
     }
+
+    console.info("[jobs.process] output upload success", {
+      jobId: job.id,
+      userId: user.id,
+      outputPath,
+      mimeType,
+      fileSize,
+    });
 
     const { error: outputInsertError } = await supabase.from("job_files").insert({
       job_id: job.id,
