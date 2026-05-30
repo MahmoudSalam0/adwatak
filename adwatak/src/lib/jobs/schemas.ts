@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const createJobSchema = z.object({
-  toolType: z.enum(["jpg_to_pdf", "pdf_merge"]),
+  toolType: z.enum(["jpg_to_pdf", "pdf_merge", "image_compress"]),
   inputFiles: z
     .array(
       z.object({

@@ -10,6 +10,7 @@ interface DropZoneProps {
   accept?: string;
   maxSize?: number;
   fileTypesLabel?: string;
+  dropLabel?: string;
 }
 
 const DEFAULT_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,image/bmp";
@@ -20,6 +21,7 @@ export default function DropZone({
   accept = DEFAULT_ACCEPT,
   maxSize = 20,
   fileTypesLabel = "JPG, PNG, WebP",
+  dropLabel = "الصور",
 }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -121,7 +123,7 @@ export default function DropZone({
 
         <div>
           <p className="text-lg font-medium text-white">
-            {isDragging ? "أفلت الصور هنا" : "اسحب وأفلت الصور هنا"}
+            {isDragging ? `أفلت ${dropLabel} هنا` : `اسحب وأفلت ${dropLabel} هنا`}
           </p>
           <p className="text-sm text-gray-500 mt-1">
             أو انقر لاختيار الملفات

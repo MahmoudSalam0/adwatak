@@ -256,6 +256,7 @@ export default function JpgToPdfClient() {
           <DropZone
             onFilesSelected={addImages}
             disabled={isProcessing}
+            dropLabel="الصور"
           />
         </FadeIn>
 

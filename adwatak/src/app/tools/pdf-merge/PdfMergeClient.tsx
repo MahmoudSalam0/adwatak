@@ -233,6 +233,7 @@ export default function PdfMergeClient() {
             disabled={isSubmitting}
             accept="application/pdf,.pdf"
             fileTypesLabel="PDF"
+            dropLabel="ملفات PDF"
             maxSize={15}
           />
         </FadeIn>

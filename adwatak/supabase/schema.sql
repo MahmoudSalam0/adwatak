@@ -186,7 +186,7 @@ values
     'job-outputs',
     false,
     209715200,
-    array['application/pdf']
+    array['application/pdf', 'application/zip']
   )
 on conflict (id) do nothing;
 

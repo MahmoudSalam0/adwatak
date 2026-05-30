@@ -39,7 +39,7 @@ export const tools: ToolItem[] = [
     icon: "ImageDown",
     color: "#059669",
     gradient: "from-emerald-500 to-green-600",
-    isReady: false,
+    isReady: true,
   },
   {
     slug: "webp-to-jpg",

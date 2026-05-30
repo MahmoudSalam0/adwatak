@@ -4,6 +4,8 @@ import { buildPdfFromImages, mergePdfFiles } from "@/lib/jobs/serverPdf";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { ToolType } from "@/lib/supabase/types";
+import sharp from "sharp";
+import JSZip from "jszip";
 
 interface Params {
   params: { id: string };
@@ -38,7 +40,7 @@ export async function POST(_request: Request, { params }: Params) {
     return ok({ status: "completed", message: "المهمة مكتملة بالفعل" });
   }
 
-  if (job.tool_type !== "jpg_to_pdf" && job.tool_type !== "pdf_merge") {
+  if (job.tool_type !== "jpg_to_pdf" && job.tool_type !== "pdf_merge" && job.tool_type !== "image_compress") {
     return fail("نوع المهمة غير مدعوم حالياً", 400);
   }
 
@@ -84,12 +86,35 @@ export async function POST(_request: Request, { params }: Params) {
 
     await supabase.from("jobs").update({ progress: 80 }).eq("id", job.id);
 
-    const outputBytes =
-      job.tool_type === "jpg_to_pdf"
-        ? await buildPdfFromImages(inputs)
-        : await mergePdfFiles(inputs.map((input) => input.bytes));
-    const outputPath = `${user.id}/${job.id}/output.pdf`;
-    const mimeType = "application/pdf";
+    let outputBytes: Uint8Array;
+    let outputPath: string;
+    let mimeType: string;
+
+    if (job.tool_type === "jpg_to_pdf") {
+      outputBytes = await buildPdfFromImages(inputs);
+      outputPath = `${user.id}/${job.id}/output.pdf`;
+      mimeType = "application/pdf";
+    } else if (job.tool_type === "pdf_merge") {
+      outputBytes = await mergePdfFiles(inputs.map((input) => input.bytes));
+      outputPath = `${user.id}/${job.id}/output.pdf`;
+      mimeType = "application/pdf";
+    } else {
+      const zip = new JSZip();
+      for (let i = 0; i < inputs.length; i++) {
+        const input = inputs[i];
+        const isPng = input.mime === "image/png";
+        const ext = isPng ? "png" : "jpg";
+        const compressed = isPng
+          ? await sharp(input.bytes).png({ compressionLevel: 9 }).toBuffer()
+          : await sharp(input.bytes).jpeg({ quality: 70, mozjpeg: true }).toBuffer();
+        zip.file(`compressed-${i + 1}.${ext}`, compressed);
+      }
+      const zipBuffer = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE", compressionOptions: { level: 9 } });
+      outputBytes = zipBuffer;
+      outputPath = `${user.id}/${job.id}/output.zip`;
+      mimeType = "application/zip";
+    }
+
     const fileSize = outputBytes.byteLength;
 
     const { error: uploadError } = await admin.storage

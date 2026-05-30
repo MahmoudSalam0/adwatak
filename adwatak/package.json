@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "smoke:jpg-pdf": "node scripts/smoke-jpg-to-pdf.js",
-    "smoke:pdf-merge": "node scripts/smoke-pdf-merge.js"
+    "smoke:pdf-merge": "node scripts/smoke-pdf-merge.js",
+    "smoke:image-compress": "node scripts/smoke-image-compress.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
@@ -16,11 +17,13 @@
     "clsx": "^2.1.0",
     "framer-motion": "^11.0.0",
     "jspdf": "^2.5.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.400.0",
     "next": "^14.2.0",
     "pdf-lib": "^1.17.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
+    "sharp": "^0.34.5",
     "tailwind-merge": "^2.3.0",
     "zod": "^4.4.3"
   },
