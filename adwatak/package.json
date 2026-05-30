@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "smoke:jpg-pdf": "node scripts/smoke-jpg-to-pdf.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
