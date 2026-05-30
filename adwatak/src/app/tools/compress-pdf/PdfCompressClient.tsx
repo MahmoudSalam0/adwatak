@@ -134,7 +134,13 @@ export default function PdfCompressClient() {
         }),
       });
       const uploadPayload = await uploadReq.json();
-      if (!uploadReq.ok) throw new Error(uploadPayload?.error?.message ?? "تعذر إنشاء روابط الرفع");
+      if (!uploadReq.ok) {
+        const details = uploadPayload?.error?.details;
+        const detailText = typeof details === "string" ? details : details ? JSON.stringify(details) : "";
+        throw new Error(
+          `${uploadPayload?.error?.message ?? "تعذر إنشاء روابط الرفع"}${detailText ? ` - ${detailText}` : ""}`,
+        );
+      }
 
       const uploads = uploadPayload?.data?.uploads as Array<{ path: string; signedUploadUrl: string }>;
       const totalBytes = files.reduce((acc, item) => acc + item.file.size, 0);
@@ -142,10 +148,18 @@ export default function PdfCompressClient() {
 
       for (let i = 0; i < uploads.length; i++) {
         const currentFile = files[i].file;
-        await uploadWithProgress(uploads[i].signedUploadUrl, currentFile, (progress) => {
-          const loaded = Math.round((progress / 100) * currentFile.size);
-          setUploadProgress(Math.min(100, Math.round(((uploaded + loaded) / totalBytes) * 100)));
-        });
+        try {
+          await uploadWithProgress(uploads[i].signedUploadUrl, currentFile, (progress) => {
+            const loaded = Math.round((progress / 100) * currentFile.size);
+            setUploadProgress(Math.min(100, Math.round(((uploaded + loaded) / totalBytes) * 100)));
+          });
+        } catch (uploadError) {
+          throw new Error(
+            `فشل رفع الملف "${currentFile.name}": ${
+              uploadError instanceof Error ? uploadError.message : "خطأ غير معروف"
+            }`,
+          );
+        }
         uploaded += currentFile.size;
         setUploadProgress(Math.min(100, Math.round((uploaded / totalBytes) * 100)));
       }

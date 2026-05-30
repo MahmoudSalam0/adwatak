@@ -60,6 +60,13 @@ export async function POST(request: Request) {
       .createSignedUploadUrl(path);
 
     if (error || !data) {
+      console.error("[storage.upload-url] signed-url creation failed", {
+        userId: user.id,
+        fileName: file.fileName,
+        contentType: file.contentType,
+        sizeBytes: file.sizeBytes,
+        error: error?.message,
+      });
       return fail("تعذر إنشاء رابط الرفع", 500, error?.message);
     }
 

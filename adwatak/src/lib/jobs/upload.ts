@@ -7,6 +7,9 @@ export async function uploadWithProgress(
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
     xhr.setRequestHeader("x-upsert", "true");
+    if (file.type) {
+      xhr.setRequestHeader("content-type", file.type);
+    }
 
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable) return;
@@ -18,7 +21,14 @@ export async function uploadWithProgress(
         onProgress(100);
         resolve();
       } else {
-        reject(new Error("فشل رفع الملف"));
+        const details = xhr.responseText?.trim();
+        reject(
+          new Error(
+            `فشل رفع الملف (HTTP ${xhr.status}${xhr.statusText ? ` ${xhr.statusText}` : ""})${
+              details ? ` - ${details}` : ""
+            }`,
+          ),
+        );
       }
     };
 
