@@ -12,7 +12,7 @@ export const tools: ToolItem[] = [
     icon: "FilePlus",
     color: "#7c3aed",
     gradient: "from-purple-500 to-violet-600",
-    isReady: false,
+    isReady: true,
   },
   {
     slug: "jpg-to-pdf",

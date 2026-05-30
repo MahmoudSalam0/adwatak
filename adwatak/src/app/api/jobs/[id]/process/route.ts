@@ -1,8 +1,9 @@
 import { fail, ok } from "@/lib/api/responses";
 import { STORAGE_BUCKETS } from "@/lib/jobs/constants";
-import { buildPdfFromImages } from "@/lib/jobs/serverPdf";
+import { buildPdfFromImages, mergePdfFiles } from "@/lib/jobs/serverPdf";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import type { ToolType } from "@/lib/supabase/types";
 
 interface Params {
   params: { id: string };
@@ -37,7 +38,7 @@ export async function POST(_request: Request, { params }: Params) {
     return ok({ status: "completed", message: "المهمة مكتملة بالفعل" });
   }
 
-  if (job.tool_type !== "jpg_to_pdf") {
+  if (job.tool_type !== "jpg_to_pdf" && job.tool_type !== "pdf_merge") {
     return fail("نوع المهمة غير مدعوم حالياً", 400);
   }
 
@@ -83,7 +84,10 @@ export async function POST(_request: Request, { params }: Params) {
 
     await supabase.from("jobs").update({ progress: 80 }).eq("id", job.id);
 
-    const outputBytes = await buildPdfFromImages(inputs);
+    const outputBytes =
+      job.tool_type === "jpg_to_pdf"
+        ? await buildPdfFromImages(inputs)
+        : await mergePdfFiles(inputs.map((input) => input.bytes));
     const outputPath = `${user.id}/${job.id}/output.pdf`;
     const mimeType = "application/pdf";
     const fileSize = outputBytes.byteLength;
@@ -139,7 +143,7 @@ export async function POST(_request: Request, { params }: Params) {
     const durationMs = Date.now() - startedAt.getTime();
     await supabase.from("usage_logs").insert({
       user_id: user.id,
-      tool_type: "jpg_to_pdf",
+      tool_type: job.tool_type as ToolType,
       job_id: job.id,
       duration_ms: durationMs,
       input_total_bytes: inputTotalBytes,
@@ -164,7 +168,7 @@ export async function POST(_request: Request, { params }: Params) {
     const durationMs = Date.now() - startedAt.getTime();
     await supabase.from("usage_logs").insert({
       user_id: user.id,
-      tool_type: "jpg_to_pdf",
+      tool_type: job.tool_type as ToolType,
       job_id: job.id,
       duration_ms: durationMs,
       status: "failed",

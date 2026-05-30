@@ -37,3 +37,22 @@ export async function buildPdfFromImages(files: InputFile[]): Promise<Uint8Array
 
   return pdf.save();
 }
+
+export async function mergePdfFiles(files: Uint8Array[]): Promise<Uint8Array> {
+  if (files.length === 0) {
+    throw new Error("لا توجد ملفات PDF للدمج");
+  }
+
+  const merged = await PDFDocument.create();
+
+  for (const bytes of files) {
+    const src = await PDFDocument.load(bytes, { ignoreEncryption: false });
+    const pageIndices = src.getPageIndices();
+    const copiedPages = await merged.copyPages(src, pageIndices);
+    for (const page of copiedPages) {
+      merged.addPage(page);
+    }
+  }
+
+  return merged.save();
+}

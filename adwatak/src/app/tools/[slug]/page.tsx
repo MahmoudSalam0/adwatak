@@ -36,9 +36,8 @@ export default function ToolPage({ params }: Props) {
   }
 
   // Force redirect for the ready tool to its correct static route
-  if (tool.slug === "jpg-to-pdf") {
-    redirect("/tools/jpg-to-pdf");
-  }
+  if (tool.slug === "jpg-to-pdf") redirect("/tools/jpg-to-pdf");
+  if (tool.slug === "pdf-merge") redirect("/tools/pdf-merge");
 
   return <ToolPlaceholder tool={tool} />;
 }

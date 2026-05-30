@@ -9,6 +9,7 @@ interface DropZoneProps {
   disabled?: boolean;
   accept?: string;
   maxSize?: number;
+  fileTypesLabel?: string;
 }
 
 const DEFAULT_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,image/bmp";
@@ -18,6 +19,7 @@ export default function DropZone({
   disabled = false,
   accept = DEFAULT_ACCEPT,
   maxSize = 20,
+  fileTypesLabel = "JPG, PNG, WebP",
 }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -127,7 +129,7 @@ export default function DropZone({
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-gray-600">
-          <span>JPG, PNG, WebP</span>
+          <span>{fileTypesLabel}</span>
           <span>حتى {maxSize} MB</span>
           <span>متعدد</span>
         </div>

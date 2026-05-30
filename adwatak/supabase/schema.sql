@@ -179,7 +179,7 @@ values
     'job-inputs',
     false,
     15728640,
-    array['image/jpeg', 'image/png', 'image/webp', 'image/bmp', 'image/gif']
+    array['image/jpeg', 'image/png', 'image/webp', 'image/bmp', 'image/gif', 'application/pdf']
   ),
   (
     'job-outputs',
