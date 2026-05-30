@@ -97,7 +97,9 @@ export async function renderPdfPagesToImages(
   format: PdfImageFormat,
   quality: PdfQuality,
 ): Promise<PdfPageImage[]> {
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const { getDocument, GlobalWorkerOptions } = pdfjs;
+  GlobalWorkerOptions.workerSrc = "";
   const pdfBytes = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
   const loadingTask = getDocument({ data: pdfBytes, disableWorker: true, useSystemFonts: true } as any);
   const pdfDoc = await loadingTask.promise;
