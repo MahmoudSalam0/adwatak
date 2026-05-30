@@ -93,17 +93,30 @@ export async function renderPdfPagesToImages(
   format: PdfImageFormat,
   quality: PdfQuality,
 ): Promise<PdfPageImage[]> {
-  const doc = await PDFDocument.load(input, { ignoreEncryption: false, updateMetadata: false });
+  const sourcePdfBuffer = Buffer.from(input);
+  const doc = await PDFDocument.load(sourcePdfBuffer, { ignoreEncryption: false, updateMetadata: false });
   const pageCount = doc.getPageCount();
   const jpgQuality = qualityToJpegValue(quality);
   const pages: PdfPageImage[] = [];
 
   for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
-    const pageSource = sharp(input, { density: 160, page: pageIndex });
+    const pagePdf = await PDFDocument.create();
+    const [copiedPage] = await pagePdf.copyPages(doc, [pageIndex]);
+    pagePdf.addPage(copiedPage);
+    const singlePagePdfBytes = await pagePdf.save({ useObjectStreams: true, addDefaultPage: false, objectsPerTick: 50 });
+
+    const renderedPage = await sharp(Buffer.from(singlePagePdfBytes), { density: 160 }).png({ compressionLevel: 9 }).toBuffer();
     const output =
       format === "png"
-        ? await pageSource.png({ compressionLevel: 9 }).toBuffer()
-        : await pageSource.jpeg({ quality: jpgQuality, mozjpeg: true }).toBuffer();
+        ? await sharp(renderedPage).png({ compressionLevel: 9 }).toBuffer()
+        : await sharp(renderedPage).jpeg({ quality: jpgQuality, mozjpeg: true }).toBuffer();
+
+    console.info("[pdf_to_images] page-rendered", {
+      page: pageIndex + 1,
+      renderedImageBytes: renderedPage.byteLength,
+      outputFormat: format,
+      outputBytes: output.byteLength,
+    });
 
     pages.push({
       fileName: `page-${pageIndex + 1}.${format}`,
