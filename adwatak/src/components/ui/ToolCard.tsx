@@ -11,6 +11,7 @@ import {
   ImageDown,
   Repeat2,
   FileText,
+  Images,
 } from "lucide-react";
 
 const iconMap: Record<string, React.ElementType> = {
@@ -20,6 +21,7 @@ const iconMap: Record<string, React.ElementType> = {
   ImageDown,
   Repeat2,
   FileText,
+  Images,
 };
 
 interface ToolCardProps {

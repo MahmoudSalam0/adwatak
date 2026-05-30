@@ -1,6 +1,6 @@
 import { fail, ok } from "@/lib/api/responses";
 import { STORAGE_BUCKETS } from "@/lib/jobs/constants";
-import { buildPdfFromImages, compressPdfBytes, mergePdfFiles } from "@/lib/jobs/serverPdf";
+import { buildPdfFromImages, compressPdfBytes, mergePdfFiles, renderPdfPagesToImages } from "@/lib/jobs/serverPdf";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { ToolType } from "@/lib/supabase/types";
@@ -13,6 +13,7 @@ interface Params {
 
 type PngMode = "auto" | "keep-png" | "to-webp" | "to-jpg";
 type PdfQuality = "low" | "medium" | "high";
+type PdfImageFormat = "jpg" | "png";
 
 function getInputFileNames(options: Record<string, unknown> | null | undefined): string[] {
   const names = options?.inputFileNames;
@@ -28,6 +29,11 @@ function normalizePdfQuality(value: unknown): PdfQuality {
 function normalizePngMode(value: unknown): PngMode {
   if (value === "keep-png" || value === "to-webp" || value === "to-jpg") return value;
   return "auto";
+}
+
+function normalizePdfImageFormat(value: unknown): PdfImageFormat {
+  if (value === "png") return "png";
+  return "jpg";
 }
 
 export async function POST(_request: Request, { params }: Params) {
@@ -63,7 +69,8 @@ export async function POST(_request: Request, { params }: Params) {
     job.tool_type !== "jpg_to_pdf" &&
     job.tool_type !== "pdf_merge" &&
     job.tool_type !== "image_compress" &&
-    job.tool_type !== "pdf_compress"
+    job.tool_type !== "pdf_compress" &&
+    job.tool_type !== "pdf_to_images"
   ) {
     return fail("نوع المهمة غير مدعوم حالياً", 400);
   }
@@ -226,7 +233,7 @@ export async function POST(_request: Request, { params }: Params) {
         savingsPercentage: inputTotalBytes > 0 ? ((inputTotalBytes - outputBytes.byteLength) / inputTotalBytes) * 100 : 0,
         files: fileReports,
       };
-    } else {
+    } else if (job.tool_type === "pdf_compress") {
       const zip = new JSZip();
       const fileReports: Array<Record<string, unknown>> = [];
       let improvedCount = 0;
@@ -383,6 +390,34 @@ export async function POST(_request: Request, { params }: Params) {
         smallCount,
         allSkipped,
       });
+    } else {
+      const format = normalizePdfImageFormat(options.format);
+      const imageQuality = normalizePdfQuality(options.quality);
+      const pageImages = await renderPdfPagesToImages(inputs[0].bytes, format, imageQuality);
+      const zip = new JSZip();
+      let imagesTotalBytes = 0;
+
+      for (const pageImage of pageImages) {
+        zip.file(pageImage.fileName, pageImage.bytes);
+        imagesTotalBytes += pageImage.bytes.byteLength;
+      }
+
+      outputBytes = await zip.generateAsync({
+        type: "uint8array",
+        compression: "DEFLATE",
+        compressionOptions: { level: 9 },
+      });
+      outputPath = `${user.id}/${job.id}/output.zip`;
+      mimeType = "application/zip";
+      report = {
+        originalSize: inputTotalBytes,
+        outputSize: outputBytes.byteLength,
+        pageCount: pageImages.length,
+        imageFormat: format,
+        quality: imageQuality,
+        averageImageSize: pageImages.length > 0 ? Math.round(imagesTotalBytes / pageImages.length) : 0,
+        note: "قد يكون حجم الصور الناتجة أكبر من ملف PDF الأصلي حسب الجودة وعدد الصفحات.",
+      };
     }
 
     if (outputBytes.byteLength > 0 && outputPath) {

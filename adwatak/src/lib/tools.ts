@@ -16,7 +16,7 @@ export const tools: ToolItem[] = [
   },
   {
     slug: "jpg-to-pdf",
-    name: "JPG إلى PDF",
+    name: "تحويل الصور إلى PDF",
     description: "حوّل صورك إلى مستند PDF احترافي في ثوانٍ",
     icon: "ImageUp",
     color: "#2563eb",
@@ -51,13 +51,13 @@ export const tools: ToolItem[] = [
     isReady: false,
   },
   {
-    slug: "cv-builder",
-    name: "بناء السيرة الذاتية",
-    description: "أنشئ سيرتك الذاتية الاحترافية وصدّرها كملف PDF",
-    icon: "FileText",
-    color: "#dc2626",
-    gradient: "from-red-500 to-rose-600",
-    isReady: false,
+    slug: "pdf-to-images",
+    name: "تحويل PDF إلى صور",
+    description: "حوّل كل صفحات PDF إلى صور منفصلة داخل ملف ZIP",
+    icon: "Images",
+    color: "#ea580c",
+    gradient: "from-orange-500 to-amber-600",
+    isReady: true,
   },
 ];
 

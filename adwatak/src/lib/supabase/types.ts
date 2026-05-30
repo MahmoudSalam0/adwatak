@@ -1,6 +1,6 @@
 export type JobStatus = "queued" | "processing" | "completed" | "failed" | "cancelled";
 
-export type ToolType = "jpg_to_pdf" | "pdf_merge" | "pdf_compress" | "image_compress" | "webp_to_jpg";
+export type ToolType = "jpg_to_pdf" | "pdf_merge" | "pdf_compress" | "image_compress" | "pdf_to_images" | "webp_to_jpg";
 
 export interface Database {
   public: {

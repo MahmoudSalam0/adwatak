@@ -15,7 +15,7 @@ create table if not exists public.profiles (
 create table if not exists public.jobs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  tool_type text not null check (tool_type in ('jpg_to_pdf', 'pdf_merge', 'pdf_compress', 'image_compress', 'webp_to_jpg')),
+  tool_type text not null check (tool_type in ('jpg_to_pdf', 'pdf_merge', 'pdf_compress', 'image_compress', 'pdf_to_images', 'webp_to_jpg')),
   status text not null default 'queued' check (status in ('queued', 'processing', 'completed', 'failed', 'cancelled')),
   options jsonb not null default '{}'::jsonb,
   progress int not null default 0 check (progress >= 0 and progress <= 100),
@@ -48,7 +48,7 @@ create index if not exists job_files_kind_idx on public.job_files(kind);
 create table if not exists public.usage_logs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  tool_type text not null check (tool_type in ('jpg_to_pdf', 'pdf_merge', 'pdf_compress', 'image_compress', 'webp_to_jpg')),
+  tool_type text not null check (tool_type in ('jpg_to_pdf', 'pdf_merge', 'pdf_compress', 'image_compress', 'pdf_to_images', 'webp_to_jpg')),
   job_id uuid references public.jobs(id) on delete set null,
   duration_ms int,
   input_total_bytes bigint,

@@ -10,7 +10,8 @@
     "smoke:jpg-pdf": "node scripts/smoke-jpg-to-pdf.js",
     "smoke:pdf-merge": "node scripts/smoke-pdf-merge.js",
     "smoke:image-compress": "node scripts/smoke-image-compress.js",
-    "smoke:pdf-compress": "node scripts/smoke-pdf-compress.js"
+    "smoke:pdf-compress": "node scripts/smoke-pdf-compress.js",
+    "smoke:pdf-to-images": "node scripts/smoke-pdf-to-images.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

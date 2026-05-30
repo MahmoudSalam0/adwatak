@@ -7,6 +7,12 @@ interface InputFile {
 }
 
 type PdfQuality = "low" | "medium" | "high";
+type PdfImageFormat = "jpg" | "png";
+
+interface PdfPageImage {
+  fileName: string;
+  bytes: Buffer;
+}
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
@@ -80,4 +86,30 @@ export async function compressPdfBytes(input: Uint8Array): Promise<Uint8Array> {
     addDefaultPage: false,
     objectsPerTick: 50,
   });
+}
+
+export async function renderPdfPagesToImages(
+  input: Uint8Array,
+  format: PdfImageFormat,
+  quality: PdfQuality,
+): Promise<PdfPageImage[]> {
+  const doc = await PDFDocument.load(input, { ignoreEncryption: false, updateMetadata: false });
+  const pageCount = doc.getPageCount();
+  const jpgQuality = qualityToJpegValue(quality);
+  const pages: PdfPageImage[] = [];
+
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+    const pageSource = sharp(input, { density: 160, page: pageIndex });
+    const output =
+      format === "png"
+        ? await pageSource.png({ compressionLevel: 9 }).toBuffer()
+        : await pageSource.jpeg({ quality: jpgQuality, mozjpeg: true }).toBuffer();
+
+    pages.push({
+      fileName: `page-${pageIndex + 1}.${format}`,
+      bytes: output,
+    });
+  }
+
+  return pages;
 }

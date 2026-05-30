@@ -37,8 +37,8 @@ export default function HeroSection() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="mt-6 text-lg md:text-xl text-gray-400 max-w-2xl leading-relaxed"
           >
-            منصة مجانية تقدم أدوات احترافية لمعالجة الملفات والصور وبناء السيرة
-            الذاتية. سريعة، آمنة، وبدون تحميل.
+            منصة مجانية تقدم أدوات احترافية لمعالجة ملفات PDF والصور.
+            سريعة، آمنة، وبدون تحميل.
           </motion.p>
 
           <motion.div
